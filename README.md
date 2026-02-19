@@ -30,16 +30,12 @@
 └────────────────────────────┘
 
 
-Data Model:
+/addplant prayer_plant Maranta
+/addplant pothos_Golden Pothos
+/addplant golden_snake Golden Snake
 
-"user_id": [ Plant, Plant ]
-
-{
-  "name": "Living Room",
-  "type": "pothos",
-  "last_watered": "2026-02-09"
-}
-
-
+/status
+/care Maranta
+/water "Golden Snake"
 
 

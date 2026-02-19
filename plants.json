@@ -1,14 +1,19 @@
 {
   "1318355077": [
     {
-      "name": "living room",
+      "name": "Golden Pothos",
       "type": "pothos",
-      "last_watered": "2026-02-10"
+      "last_watered": "2026-02-19"
     },
     {
-      "name": "bedroom",
-      "type": "pothos",
-      "last_watered": "2026-02-10"
+      "name": "Golden Snake",
+      "type": "golden_snake",
+      "last_watered": "2026-02-19"
+    },
+    {
+      "name": "Maranta",
+      "type": "prayer_plant",
+      "last_watered": "2026-02-19"
     }
   ]
 }
