@@ -17,6 +17,10 @@ Talk to the bot in plain English:
 - `"I got a new pothos called Pearl"` — adds the plant
 - `"why are my pothos leaves yellowing?"` — AI-powered advice
 
+## Demo
+
+[![Plant Care Agent Demo](https://img.youtube.com/vi/uITz0FG0pEc/0.jpg)](https://youtu.be/uITz0FG0pEc)
+
 ## What is the Bot vs the Agent?
 
 **Bot** (`bot.py`) is the interface layer — it listens for messages on Telegram, understands what the user wants (watering a plant, adding a plant, asking a question), and sends back a reply. Without the bot, there's no way to interact with the system.
@@ -51,6 +55,14 @@ In short: the **bot talks**, the **agent thinks**.
 │  - plants.json persistence │
 └────────────────────────────┘
 ```
+
+## Areas to improve
+
+- **Reminders** — proactively send a daily message when a plant is overdue for watering, without the user having to ask
+- **More plant types** — expand `rules.py` with more species beyond the current three
+- **Remove a plant** — let users say "remove my Maranta" to delete a plant from their list
+- **Multi-language support** — respond in the user's language
+- **Web dashboard** — a simple UI to view and manage plants outside of Telegram
 
 ## Running locally
 
