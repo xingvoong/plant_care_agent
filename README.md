@@ -17,6 +17,14 @@ Talk to the bot in plain English:
 - `"I got a new pothos called Pearl"` — adds the plant
 - `"why are my pothos leaves yellowing?"` — AI-powered advice
 
+## What is the Bot vs the Agent?
+
+**Bot** (`bot.py`) is the interface layer — it listens for messages on Telegram, understands what the user wants (watering a plant, adding a plant, asking a question), and sends back a reply. Without the bot, there's no way to interact with the system.
+
+**Agent** (`agent.py` + `brain.py`) is the reasoning layer — it looks at each plant's data, applies care rules, and decides what action to take (e.g. "this plant is overdue for water"). The agent doesn't talk to users directly; it produces decisions that the bot acts on.
+
+In short: the **bot talks**, the **agent thinks**.
+
 ## Architecture
 
 ```
@@ -44,10 +52,28 @@ Talk to the bot in plain English:
 └────────────────────────────┘
 ```
 
-## Setup
+## Running locally
+
+**Requirements:**
+- Python 3.10+
+- A Telegram bot token — create one via [@BotFather](https://t.me/BotFather) on Telegram
+- An OpenRouter API key — sign up free at [openrouter.ai](https://openrouter.ai)
+
+**Steps:**
 
 ```bash
-cp .env.example .env  # fill in your keys
+# 1. Clone the repo
+git clone https://github.com/xingvoong/plant_care_agent.git
+cd plant_care_agent
+
+# 2. Install dependencies
+pip install requests
+
+# 3. Set up environment variables
+cp .env.example .env
+# Edit .env and fill in BOT_TOKEN and OPENROUTER_API_KEY
+
+# 4. Run the bot
 source .env && python bot.py
 ```
 
