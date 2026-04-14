@@ -1,19 +1,22 @@
 {
   "1318355077": [
     {
+      "name": "Maranta",
+      "type": "prayer plant",
+      "last_watered": "2026-02-15",
+      "last_reminded": "2026-04-13"
+    },
+    {
       "name": "Golden Pothos",
       "type": "pothos",
-      "last_watered": "2026-02-19"
+      "last_watered": "2026-02-10",
+      "last_reminded": "2026-04-13"
     },
     {
       "name": "Golden Snake",
-      "type": "golden_snake",
-      "last_watered": "2026-02-19"
-    },
-    {
-      "name": "Maranta",
-      "type": "prayer_plant",
-      "last_watered": "2026-02-19"
+      "type": "golden snake",
+      "last_watered": "2026-02-19",
+      "last_reminded": "2026-04-13"
     }
   ]
 }

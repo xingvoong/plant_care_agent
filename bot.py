@@ -1,16 +1,30 @@
 # bot.py
+
+import os
+import re
 import time
 import requests
 from storage import load, save, today
-from agent import decide, care_info
+from agent import decide
 from rules import CARE_RULES
-import os
+from llm import ask
+
+
+# ==============================
+# CONFIG
+# ==============================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN not set")
+    raise RuntimeError("❌ BOT_TOKEN not set in environment")
 
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+
+# ==============================
+# TELEGRAM HELPERS
+# ==============================
 
 def send(chat_id, text):
     requests.post(f"{BASE_URL}/sendMessage", json={
@@ -18,112 +32,105 @@ def send(chat_id, text):
         "text": text
     })
 
+
 def get_updates(offset=None):
-    params = {"timeout": 30}
+    params = {"timeout": 1}
     if offset:
         params["offset"] = offset
-    return requests.get(f"{BASE_URL}/getUpdates", params=params).json()
+    r = requests.get(f"{BASE_URL}/getUpdates", params=params)
+    return r.json()
+
+
+# ==============================
+# INTENT DETECTION
+# ==============================
+
+WATER_WORDS = ["watered", "water", "watering"]
+ADD_WORDS = ["add", "added", "got", "have", "bought", "new"]
+
+
+def detect_water(text, plants):
+    """Return plant if user mentions watering it by name."""
+    for p in plants:
+        if p["name"].lower() in text:
+            if any(w in text for w in WATER_WORDS):
+                return p
+    return None
+
+
+def detect_add(text):
+    """Return {type, name} if user wants to add a known plant type."""
+    if not any(w in text for w in ADD_WORDS):
+        return None
+    for ptype in CARE_RULES:
+        if ptype in text:
+            match = re.search(r'(?:called|named)\s+([A-Za-z ]+)', text)
+            name = match.group(1).strip().title() if match else ptype.title()
+            return {"type": ptype, "name": name}
+    return None
+
+
+# ==============================
+# MESSAGE HANDLER
+# ==============================
 
 def handle(msg):
-    text = msg.get("text", "")
+    text = msg.get("text", "").strip()
+    if not text:
+        return
+
     chat = msg["chat"]["id"]
     user = str(msg["from"]["id"])
 
     data = load()
     data.setdefault(user, [])
 
-    # --- ADD PLANT ---
-    if text.startswith("/addplant"):
-        parts = text.split()
-        if len(parts) < 3:
-            send(chat, "❌ Usage: /addplant <type> <name>")
-            return
+    text_lower = text.lower()
 
-        ptype = parts[1].lower().strip()
-        name = " ".join(parts[2:]).strip('"')
-
-        if ptype not in CARE_RULES:
-            send(chat, f"❌ Unknown plant type '{ptype}'. Available types: {', '.join(CARE_RULES.keys())}")
-            return
-
-        data[user].append({
-            "name": name,
-            "type": ptype,
-            "last_watered": today()
-        })
+    # Did they water a plant?
+    watered = detect_water(text_lower, data[user])
+    if watered:
+        watered["last_watered"] = today()
         save(data)
-        send(chat, f"✅ {name} added!")
+        send(chat, f"Got it! Recorded that you watered {watered['name']} today.")
+        return
 
-    # --- WATER PLANT ---
-    elif text.startswith("/water"):
-        parts = text.split()
-        if len(parts) < 2:
-            send(chat, "❌ Usage: /water <plant_name>")
-            return
+    # Are they adding a plant?
+    new_plant = detect_add(text_lower)
+    if new_plant:
+        new_plant["last_watered"] = today()
+        data[user].append(new_plant)
+        save(data)
+        send(chat, f"Added {new_plant['name']} ({new_plant['type']})!")
+        return
 
-        pname = " ".join(parts[1:]).strip('"')
-        found = False
-        for p in data[user]:
-            if p["name"].lower() == pname.lower():
-                p["last_watered"] = today()
-                found = True
-                save(data)
-                send(chat, f"💧 {p['name']} watered!")
-                break
-        if not found:
-            send(chat, f"❌ Plant '{pname}' not found")
+    # Everything else → LLM with full plant context including status
+    plant_context = []
+    for p in data[user]:
+        status = decide(p)
+        plant_context.append({**p, "status": status})
 
-    # --- REMOVE PLANT ---
-    elif text.startswith("/removeplant"):
-        parts = text.split()
-        if len(parts) < 2:
-            send(chat, "❌ Usage: /removeplant <plant_name>")
-            return
+    reply = ask(text, plant_context)
+    send(chat, reply)
 
-        pname = " ".join(parts[1:]).strip('"')
-        new_list = [p for p in data[user] if p["name"].lower() != pname.lower()]
-        if len(new_list) == len(data[user]):
-            send(chat, f"❌ Plant '{pname}' not found")
-        else:
-            data[user] = new_list
-            save(data)
-            send(chat, f"🗑️ {pname} removed!")
 
-    # --- STATUS ---
-    elif text == "/status":
-        reply = ""
-        for p in data[user]:
-            reply += f"{p['name']}: {decide(p)}\n"
-        send(chat, reply or "🌱 No plants")
-
-    # --- CARE INFO ---
-    elif text.startswith("/care"):
-        parts = text.split()
-        if len(parts) < 2:
-            send(chat, "❌ Usage: /care <plant_name>")
-            return
-
-        pname = " ".join(parts[1:]).strip('"')
-        found = False
-        for p in data[user]:
-            if p["name"].lower() == pname.lower():
-                info = care_info(p)
-                send(chat, info)
-                found = True
-                break
-        if not found:
-            send(chat, f"❌ Plant '{pname}' not found")
+# ==============================
+# MAIN LOOP
+# ==============================
 
 def main():
+    print("🌱 Plant Care Bot started...")
     offset = None
-    print("🌱 Plant Care Bot running...")
+
     while True:
         updates = get_updates(offset)
         for u in updates.get("result", []):
             offset = u["update_id"] + 1
             if "message" in u:
                 handle(u["message"])
-        time.sleep(1)
+        time.sleep(0.1)
+
 
 if __name__ == "__main__":
+    print("FILE LOADED")
     main()
