@@ -56,6 +56,65 @@ In short: the **bot talks**, the **agent thinks**.
 └────────────────────────────┘
 ```
 
+## Phase 2: Kubernetes Operator
+
+The next phase moves the plant care agent into Kubernetes — turning plants into native cluster resources, managed by an operator.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Kubernetes Cluster                  │
+│                                                      │
+│  ┌─────────────┐     watches      ┌───────────────┐ │
+│  │   Plant CRD  │◄────────────────│   Operator    │ │
+│  │  (etcd)      │                 │  (your code)  │ │
+│  └─────────────┘                  └───────┬───────┘ │
+│         ▲                                 │         │
+│         │ kubectl apply                   │ reconcile│
+│         │                                 ▼         │
+│  ┌──────┴──────┐                  ┌───────────────┐ │
+│  │  plant.yaml  │                 │  Telegram Bot  │ │
+│  │  (manifest)  │                 │  (reminder)   │ │
+│  └─────────────┘                  └───────────────┘ │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐   │
+│  │              Web UI (dashboard)               │   │
+│  │   shows all Plant resources + their status   │   │
+│  └──────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────┘
+```
+
+### How it works
+
+1. You define a plant by writing a YAML manifest and applying it with `kubectl apply`
+2. Kubernetes stores it in etcd as a `Plant` custom resource
+3. The operator watches for `Plant` resources — when one is created or updated, it runs the reconcile loop
+4. The reconcile loop checks if a plant is overdue for watering and acts (updates status, sends Telegram reminder)
+5. The Web UI talks to the K8s API and displays all plants and their status in a browser
+
+### Build plan
+
+| Step | What we build |
+|------|--------------|
+| 1 | Architecture + big picture |
+| 2 | Local K8s cluster setup (kind) |
+| 3 | Define the CRDs (Plant as a K8s resource) |
+| 4 | Build the operator (reconcile loop with kopf) |
+| 5 | RBAC + cluster management configs |
+| 6 | Web UI dashboard |
+| 7 | Deploy + test everything end to end |
+
+### Why Kubernetes
+
+- Plant state is versioned and auditable — K8s tracks every change
+- Multiple operator replicas can run safely via leader election
+- You get `kubectl get plants` for free
+- The UI can watch for real-time updates via the K8s watch API
+- Demonstrates CRDs, operators, RBAC, and cluster management in a real domain
+
+---
+
 ## Areas to improve
 
 - **Reminders** — proactively send a daily message when a plant is overdue for watering, without the user having to ask
