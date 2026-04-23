@@ -1,0 +1,76 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: plants.care.example.com
+spec:
+  group: care.example.com
+  names:
+    kind: Plant
+    plural: plants
+    singular: plant
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - plantName
+                - plantType
+                - lastWatered
+                - ownerID
+              properties:
+                plantName:
+                  type: string
+                  description: Display name of the plant (e.g. "Maranta")
+                plantType:
+                  type: string
+                  enum:
+                    - prayer plant
+                    - pothos
+                    - golden snake
+                  description: Plant species — must match a key in CARE_RULES
+                lastWatered:
+                  type: string
+                  format: date
+                  description: Date the plant was last watered (YYYY-MM-DD)
+                ownerID:
+                  type: string
+                  description: Telegram user ID of the plant owner
+            status:
+              type: object
+              properties:
+                condition:
+                  type: string
+                  enum:
+                    - healthy
+                    - needsWaterSoon
+                    - overdue
+                  description: Current watering status computed by the operator
+                lastReminded:
+                  type: string
+                  format: date
+                  description: Date the owner was last sent a reminder
+                message:
+                  type: string
+                  description: Human-readable status message
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          jsonPath: .spec.plantType
+        - name: Last Watered
+          type: string
+          jsonPath: .spec.lastWatered
+        - name: Condition
+          type: string
+          jsonPath: .status.condition
+        - name: Owner
+          type: string
+          jsonPath: .spec.ownerID

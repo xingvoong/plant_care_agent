@@ -1,0 +1,10 @@
+apiVersion: care.example.com/v1
+kind: Plant
+metadata:
+  name: maranta
+  namespace: default
+spec:
+  plantName: Maranta
+  plantType: prayer plant
+  lastWatered: "2026-04-14"
+  ownerID: "1318355077"
