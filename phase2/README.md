@@ -247,6 +247,44 @@ The CRD is the schema. It tells Kubernetes:
 
 ---
 
+### How kubectl apply works
+
+Every time you apply a plant manifest, it goes through this flow:
+
+```
+  You write plant.yaml
+          │
+          ▼
+  kubectl apply
+          │
+          ▼
+  ┌───────────────────────────────────────┐
+  │           API Server                  │
+  │                                       │
+  │  1. Is "Plant" a known resource?      │
+  │     → yes, CRD registered it          │
+  │                                       │
+  │  2. Does this manifest match          │
+  │     the CRD schema?                   │
+  │     → validate required fields        │
+  │     → validate enum values            │
+  │     → validate date format            │
+  │                                       │
+  │  3. Valid? → write to etcd            │
+  │     Invalid? → reject, show error     │
+  └───────────────────────────────────────┘
+          │
+          ▼
+        etcd
+  (Plant object stored)
+          │
+          ▼
+  Operator sees the change
+  → runs reconcile loop
+```
+
+---
+
 ### The Plant schema
 
 ```
@@ -266,6 +304,22 @@ Plant
 
 The split between `spec` and `status` is intentional. You own `spec`. The operator owns `status`. They never write to each other's fields.
 
+```
+  ┌─────────────────────────────────────────────────┐
+  │                  Plant Resource                  │
+  │                                                  │
+  │   spec/               │   status/                │
+  │   ─────────────────   │   ─────────────────────  │
+  │   plantName           │   condition              │
+  │   plantType           │   lastReminded           │
+  │   lastWatered         │   message                │
+  │   ownerID             │                          │
+  │                       │                          │
+  │   ← you write this    │   ← operator writes this │
+  │     (kubectl apply)   │     (reconcile loop)     │
+  └─────────────────────────────────────────────────┘
+```
+
 ---
 
 ### How it maps to the old data model
@@ -282,6 +336,27 @@ plants.json                     Plant CRD spec
 "last_reminded": "..."     →    status.lastReminded: "..."
 <computed by agent.decide> →    status.condition: "overdue"
 ```
+
+---
+
+### Schema validation in action
+
+The CRD enforces `plantType` as an enum. Bad values are rejected at apply time:
+
+```
+# Valid
+plantType: prayer plant   ✓ accepted
+
+# Invalid
+plantType: cactus         ✗ rejected immediately
+
+$ kubectl apply -f bad-plant.yaml
+The Plant "cactus-plant" is invalid:
+spec.plantType: Unsupported value: "cactus":
+supported values: "prayer plant", "pothos", "golden snake"
+```
+
+Nothing runs. Nothing breaks silently. The cluster rejects it before it's stored.
 
 ---
 
