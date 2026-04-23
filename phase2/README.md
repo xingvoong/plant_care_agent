@@ -108,12 +108,115 @@ As a diagram:
 
 ---
 
+---
+
+## Step 2: Local K8s Cluster Setup
+
+### What we built
+
+A local Kubernetes cluster on macOS Monterey to run the plant care operator against.
+
+---
+
+### What we tried
+
+Not everything worked. Here's the full picture:
+
+```
+                    ┌─────────────────────┐
+                    │   Goal: K8s cluster  │
+                    │   running locally    │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │    Docker Desktop    │
+                    │    + kind            │
+                    └──────────┬──────────┘
+                               │
+                          ✗ Docker Desktop
+                            stopped opening
+                               │
+                    ┌──────────▼──────────┐
+                    │       Colima         │
+                    │   (needs qemu VM)    │
+                    └──────────┬──────────┘
+                               │
+                          ✗ qemu formula broken
+                            on Monterey (Tier 2)
+                            brew install fails
+                               │
+                    ┌──────────▼──────────┐
+                    │   Rancher Desktop    │
+                    │  (bundles its own VM)│
+                    └──────────┬──────────┘
+                               │
+                          ✓ works
+```
+
+---
+
+### What Rancher Desktop gives you
+
+Rancher Desktop ships with a full Kubernetes cluster (k3s) already running inside a Lima VM. No kind needed.
+
+```
+┌─────────────────────────────────────────────┐
+│                 Your Mac                     │
+│                                              │
+│   kubectl ──────────────────────────────┐   │
+│                                         │   │
+│   ┌─────────────────────────────────┐   │   │
+│   │         Lima VM                  │   │   │
+│   │                                  │   │   │
+│   │   ┌──────────────────────────┐   │   │   │
+│   │   │   k3s (lightweight K8s)  │◄──┘   │   │
+│   │   │                          │       │   │
+│   │   │   - etcd                 │       │   │
+│   │   │   - API server           │       │   │
+│   │   │   - kubelet              │       │   │
+│   │   │   - traefik (ingress)    │       │   │
+│   │   └──────────────────────────┘       │   │
+│   │                                      │   │
+│   │   Docker socket (/Users/xingvoong/   │   │
+│   │   .rd/docker.sock)                   │   │
+│   └─────────────────────────────────────┘   │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+### Verify the cluster
+
+```bash
+export DOCKER_HOST=unix://$HOME/.rd/docker.sock
+kubectl config use-context rancher-desktop
+kubectl get nodes
+```
+
+Expected output:
+```
+NAME                   STATUS   ROLES           AGE   VERSION
+lima-rancher-desktop   Ready    control-plane   3m    v1.34.6+k3s1
+```
+
+---
+
+### Takeaways
+
+- macOS needs a Linux VM to run containers. Every tool (Docker Desktop, Colima, Rancher Desktop) is just a different way to manage that VM.
+- Docker Desktop is not the only option. When it breaks, Rancher Desktop or Colima are solid replacements.
+- Rancher Desktop bundles everything — VM, Kubernetes, Docker socket. Nothing to install separately.
+- `kubectl` holds configs for multiple clusters. Always check your context with `kubectl config current-context` when connections fail.
+- Environment setup is the hardest part of infrastructure work. The actual Kubernetes concepts are simpler than getting the tools running.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
 |------|------|--------|
 | 1 | Architecture + big picture | done |
-| 2 | Local K8s cluster setup with `kind` | todo |
+| 2 | Local K8s cluster setup with Rancher Desktop | done |
 | 3 | Define the `Plant` CRD with schema validation | todo |
 | 4 | Build the operator with `kopf` (reconcile loop) | todo |
 | 5 | RBAC — ServiceAccount, Role, RoleBinding | todo |
