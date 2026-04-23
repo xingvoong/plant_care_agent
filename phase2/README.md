@@ -211,13 +211,120 @@ lima-rancher-desktop   Ready    control-plane   3m    v1.34.6+k3s1
 
 ---
 
+---
+
+## Step 3: Define the Plant CRD
+
+### What we built
+
+A `Plant` custom resource definition — Kubernetes now knows what a plant is, stores it in etcd, and exposes it through the API.
+
+---
+
+### What a CRD actually does
+
+Without the CRD, running `kubectl get plants` returns an error. Kubernetes doesn't know what a plant is.
+
+```
+Before CRD:
+
+$ kubectl get plants
+Error: the server doesn't have a resource type "plants"
+
+
+After CRD:
+
+$ kubectl get plants
+NAME      TYPE           LAST WATERED   CONDITION   OWNER
+maranta   prayer plant   2026-04-14                 1318355077
+```
+
+The CRD is the schema. It tells Kubernetes:
+- what fields a Plant has
+- which fields are required
+- what values are valid
+- what to show in `kubectl get` output
+
+---
+
+### The Plant schema
+
+```
+Plant
+├── spec/                        ← what you define (desired state)
+│   ├── plantName    string      required — display name ("Maranta")
+│   ├── plantType    enum        required — must match a CARE_RULES key
+│   │                             ("prayer plant" | "pothos" | "golden snake")
+│   ├── lastWatered  date        required — YYYY-MM-DD
+│   └── ownerID      string      required — Telegram user ID
+│
+└── status/                      ← what the operator writes (observed state)
+    ├── condition    enum         "healthy" | "needsWaterSoon" | "overdue"
+    ├── lastReminded date         when the owner was last sent a reminder
+    └── message      string       human-readable status
+```
+
+The split between `spec` and `status` is intentional. You own `spec`. The operator owns `status`. They never write to each other's fields.
+
+---
+
+### How it maps to the old data model
+
+The existing `plants.json` had flat objects. The CRD mirrors those fields directly:
+
+```
+plants.json                     Plant CRD spec
+───────────────────────────     ───────────────────────────
+"name": "Maranta"          →    plantName: Maranta
+"type": "prayer plant"     →    plantType: prayer plant
+"last_watered": "2026-04-14" →  lastWatered: "2026-04-14"
+<user_id key in JSON>      →    ownerID: "1318355077"
+"last_reminded": "..."     →    status.lastReminded: "..."
+<computed by agent.decide> →    status.condition: "overdue"
+```
+
+---
+
+### Creating a plant resource
+
+```yaml
+# phase2/crds/sample-plant.yaml
+apiVersion: care.example.com/v1
+kind: Plant
+metadata:
+  name: maranta
+  namespace: default
+spec:
+  plantName: Maranta
+  plantType: prayer plant
+  lastWatered: "2026-04-14"
+  ownerID: "1318355077"
+```
+
+```bash
+kubectl apply -f phase2/crds/sample-plant.yaml
+kubectl get plants
+```
+
+---
+
+### Takeaways
+
+- A CRD is just a schema. It doesn't run anything — it tells Kubernetes what shape your resource has.
+- `spec` is desired state (you write it). `status` is observed state (the operator writes it). Never mix the two.
+- Schema validation is enforced at apply time. If you put an invalid `plantType`, `kubectl apply` rejects it immediately — before anything runs.
+- `additionalPrinterColumns` controls what `kubectl get plants` shows. Design it to be useful at a glance.
+- The `status` subresource is declared separately so Kubernetes can apply RBAC to it independently — operators can update status without being able to change spec.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
 |------|------|--------|
 | 1 | Architecture + big picture | done |
 | 2 | Local K8s cluster setup with Rancher Desktop | done |
-| 3 | Define the `Plant` CRD with schema validation | todo |
+| 3 | Define the `Plant` CRD with schema validation | done |
 | 4 | Build the operator with `kopf` (reconcile loop) | todo |
 | 5 | RBAC — ServiceAccount, Role, RoleBinding | todo |
 | 6 | Web UI dashboard | todo |
