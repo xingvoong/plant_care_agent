@@ -393,6 +393,14 @@ kubectl get plants
 
 ---
 
+### Summary
+
+The Plant CRD is done. Kubernetes now knows what a plant is, validates it on write, and stores it in etcd like any other resource.
+
+The spec/status split is the key idea here. You declare what you want in `spec`. The operator observes reality and writes back to `status`. Those two things never cross. That contract is what makes the operator pattern work at scale — and it's what step 4 builds on.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
