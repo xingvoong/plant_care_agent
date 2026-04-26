@@ -401,6 +401,142 @@ The spec/status split is the key idea here. You declare what you want in `spec`.
 
 ---
 
+## Step 4: Build the Operator with kopf
+
+### Overview
+
+The CRD told Kubernetes what a plant is. The operator is what acts on it.
+
+An operator is a process that runs inside the cluster, watches for Plant resources, and does something when they change. In this case: check how long ago the plant was watered, compute a condition, update the status, and send a Telegram reminder if it's overdue.
+
+`kopf` (Kubernetes Operator Pythonic Framework) is the library that handles the plumbing. It watches the Kubernetes API for events on your custom resources and calls your Python functions when something happens. You write the logic. kopf handles the wiring.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     Operator Process                          │
+│                                                              │
+│   kopf watches K8s API ──► event fires ──► your handler()   │
+│                                                  │           │
+│                                          runs reconcile()    │
+│                                                  │           │
+│                                     ┌────────────▼─────────┐│
+│                                     │  1. read spec         ││
+│                                     │  2. compute condition ││
+│                                     │  3. patch status      ││
+│                                     │  4. send reminder     ││
+│                                     └──────────────────────-┘│
+└──────────────────────────────────────────────────────────────┘
+```
+
+The operator is a direct port of the existing agent logic. `agent.py` already knows how to take a plant dict and decide its condition. The operator wraps that in a kopf handler and plugs it into the Kubernetes event loop.
+
+---
+
+### The work in action
+
+**What the reconcile loop does:**
+
+Every time a Plant resource is created or updated, kopf fires the handler. The handler:
+
+1. Reads `spec.lastWatered` and `spec.plantType` from the event
+2. Calls the same `decide()` logic from `agent.py` — days since watered, thresholds from `CARE_RULES`
+3. Maps the result to a CRD condition: `healthy`, `needsWaterSoon`, or `overdue`
+4. Patches `status.condition`, `status.message`, and `status.lastReminded` back to etcd
+5. If overdue or soon — fires a Telegram message via the bot token
+
+```
+Plant created/updated in etcd
+          │
+          ▼
+  kopf fires @kopf.on.create / @kopf.on.update
+          │
+          ▼
+  handler reads spec
+  ┌────────────────────────────────────┐
+  │  plantType  = "prayer plant"       │
+  │  lastWatered = "2026-04-14"        │
+  │  ownerID    = "1318355077"         │
+  └────────────────────────────────────┘
+          │
+          ▼
+  agent.decide() → "overdue" (days_since=12, water_days=8)
+          │
+          ▼
+  patch status via K8s API
+  ┌────────────────────────────────────┐
+  │  condition:    overdue             │
+  │  message:      Water today!        │
+  │  lastReminded: 2026-04-26          │
+  └────────────────────────────────────┘
+          │
+          ▼
+  send Telegram reminder to ownerID
+```
+
+**How the existing code maps to the operator:**
+
+```
+agent.py (original)              operator/reconciler.py
+───────────────────────          ─────────────────────────────
+decide(plant)              →     same logic, reads from spec dict
+next_action(plant)         →     inlined into handler — act if overdue/soon
+brain.py PlantAgent.act()  →     kopf handler replaces the scan loop
+bot.py polling loop        →     kopf's internal event loop
+plants.json                →     etcd (Plant resources)
+```
+
+The logic didn't change. The infrastructure around it did.
+
+**Operator file structure:**
+
+```
+phase2/operator/
+  main.py          # kopf entry point — registers handlers, starts the loop
+  reconciler.py    # reconcile logic — ports agent.decide() for K8s resources
+```
+
+`main.py` is thin — it imports kopf, imports the reconciler, and runs. All the logic lives in `reconciler.py`.
+
+**Running it locally:**
+
+```bash
+cd phase2/operator
+pip install kopf kubernetes requests
+kubectl apply -f ../crds/plant.yaml       # register the CRD
+kopf run main.py --verbose                # start the operator
+```
+
+In another terminal:
+
+```bash
+kubectl apply -f ../crds/sample-plant.yaml
+kubectl get plants
+# NAME      TYPE           LAST WATERED   CONDITION   OWNER
+# maranta   prayer plant   2026-04-14     overdue     1318355077
+```
+
+The operator sees the new Plant, runs reconcile, patches the status. `kubectl get plants` shows `overdue` in the Condition column immediately.
+
+---
+
+### Summary
+
+The operator is the bridge between the CRD schema and real behavior. kopf handles watching the API and firing events. Your code handles the logic.
+
+Everything in `agent.py` still applies — the thresholds, the condition labels, the Telegram reminder. The only thing that changed is where the plants live (etcd instead of `plants.json`) and what triggers the check (a Kubernetes event instead of a polling loop). Same brain, different nervous system.
+
+---
+
+### Takeaways
+
+- kopf turns a Python function into a Kubernetes operator. You write the handler. kopf handles watching, retrying, and status patching.
+- The reconcile loop is not a cron job. It fires on change events, not on a timer. If you need time-based checks (e.g. "check every day"), you add a kopf timer alongside the event handler.
+- Porting `agent.py` was mostly copy-paste. The spec dict from the kopf event has the same shape as the plant dict in `plants.json` — the field names just changed.
+- Status patching requires the `status` subresource. That's why it was declared separately in the CRD. Without it, the operator can't write to `status` independently of `spec`.
+- Running the operator locally (`kopf run`) is enough for development. No cluster deployment needed until step 7.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
@@ -408,7 +544,7 @@ The spec/status split is the key idea here. You declare what you want in `spec`.
 | 1 | Architecture + big picture | done |
 | 2 | Local K8s cluster setup with Rancher Desktop | done |
 | 3 | Define the `Plant` CRD with schema validation | done |
-| 4 | Build the operator with `kopf` (reconcile loop) | todo |
+| 4 | Build the operator with `kopf` (reconcile loop) | done |
 | 5 | RBAC — ServiceAccount, Role, RoleBinding | todo |
 | 6 | Web UI dashboard | todo |
 | 7 | Deploy + test everything end to end | todo |
