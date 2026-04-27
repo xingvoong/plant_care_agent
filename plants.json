@@ -3,7 +3,7 @@
     {
       "name": "Maranta",
       "type": "prayer plant",
-      "last_watered": "2026-02-15",
+      "last_watered": "2026-04-14",
       "last_reminded": "2026-04-13"
     },
     {
@@ -15,8 +15,13 @@
     {
       "name": "Golden Snake",
       "type": "golden snake",
-      "last_watered": "2026-02-19",
+      "last_watered": "2026-04-17",
       "last_reminded": "2026-04-13"
+    },
+    {
+      "type": "pothos",
+      "name": "Pothos",
+      "last_watered": "2026-04-17"
     }
   ]
 }

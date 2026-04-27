@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: plant-operator-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: plant-operator
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: plant-operator-role
+  apiGroup: rbac.authorization.k8s.io

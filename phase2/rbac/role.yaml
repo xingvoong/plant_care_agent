@@ -1,0 +1,27 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: plant-operator-role
+rules:
+  # Read and patch Plant resources + their status subresource
+  - apiGroups: ["care.example.com"]
+    resources: ["plants"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["care.example.com"]
+    resources: ["plants/status"]
+    verbs: ["get", "patch", "update"]
+
+  # kopf reads the CRD schema on startup
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+
+  # kopf posts Events to describe what the operator did
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update", "get", "list"]
+
+  # kopf uses Leases for leader election (prevents split-brain if you scale the operator)
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch", "list", "watch"]

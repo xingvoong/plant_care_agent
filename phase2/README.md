@@ -537,6 +537,193 @@ Everything in `agent.py` still applies — the thresholds, the condition labels,
 
 ---
 
+## Step 5: RBAC — ServiceAccount, Role, RoleBinding
+
+### What we built
+
+Three Kubernetes objects that give the operator exactly the permissions it needs — no more.
+
+```
+phase2/rbac/
+  serviceaccount.yaml   # identity the operator runs as
+  role.yaml             # what that identity is allowed to do
+  rolebinding.yaml      # connects the two
+```
+
+---
+
+### Why RBAC exists
+
+By default, a process running inside a Kubernetes cluster has no access to the API. It can't read resources, can't patch status, can't create events. Nothing.
+
+RBAC (Role-Based Access Control) is the permission system that changes that. You declare:
+1. An identity (ServiceAccount)
+2. A set of permissions (Role or ClusterRole)
+3. A binding between them (RoleBinding or ClusterRoleBinding)
+
+Without RBAC, the operator process starts, tries to watch for Plant resources, and immediately gets a 403. The cluster refuses to serve it.
+
+---
+
+### The three objects
+
+**ServiceAccount** — the identity
+
+```yaml
+# serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: plant-operator
+  namespace: default
+```
+
+A ServiceAccount is like a user account, but for a process instead of a person. When the operator Pod runs, Kubernetes automatically mounts credentials for this ServiceAccount into the container. The operator uses those credentials to talk to the API.
+
+---
+
+**ClusterRole** — the permission set
+
+```yaml
+# role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: plant-operator-role
+rules:
+  - apiGroups: ["care.example.com"]
+    resources: ["plants"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["care.example.com"]
+    resources: ["plants/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update", "get", "list"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch", "list", "watch"]
+```
+
+Each rule is: for these API groups, on these resource types, allow these verbs.
+
+A Role is namespace-scoped. A ClusterRole is cluster-wide. The operator needs ClusterRole because:
+- CRDs are cluster-scoped (not in any namespace)
+- kopf reads the CRD schema on startup to understand the resource structure
+- Leases (used for leader election) live at the cluster level
+
+---
+
+**ClusterRoleBinding** — the connection
+
+```yaml
+# rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: plant-operator-rolebinding
+subjects:
+  - kind: ServiceAccount
+    name: plant-operator
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: plant-operator-role
+  apiGroup: rbac.authorization.k8s.io
+```
+
+The binding says: "the `plant-operator` ServiceAccount has the permissions defined in `plant-operator-role`." Without this, the Role exists but grants nothing to anyone.
+
+---
+
+### What each permission is for
+
+```
+Resource                    Verbs                    Why
+──────────────────────────  ───────────────────────  ──────────────────────────────────────
+plants                      get, list, watch         read Plant objects to reconcile
+plants/status               patch, update            write condition/message back to etcd
+customresourcedefinitions   get, list, watch         kopf reads CRD schema on startup
+events                      create, patch, update    kopf posts events ("reconciled Plant X")
+leases                      get, create, update      kopf leader election (one active operator)
+```
+
+`plants` and `plants/status` are separate resources because the CRD declared `status` as a subresource. That means RBAC can control them independently — the operator can patch status without being able to change spec.
+
+---
+
+### Role vs ClusterRole
+
+A `Role` only grants permissions within one namespace. A `ClusterRole` grants permissions cluster-wide.
+
+```
+Namespace "default"          Cluster level
+─────────────────────        ──────────────────────────
+plants                       customresourcedefinitions
+events                       leases
+```
+
+Plants live in a namespace. CRDs and Leases don't. That's why we use ClusterRole — not because we want broad access, but because some of the resources we need are cluster-scoped.
+
+This is a common RBAC pattern: ClusterRole for the permission definition (because some resources are cluster-level), RoleBinding in the namespace for everything namespace-scoped.
+
+---
+
+### Applying the RBAC
+
+```bash
+kubectl apply -f phase2/rbac/serviceaccount.yaml
+kubectl apply -f phase2/rbac/role.yaml
+kubectl apply -f phase2/rbac/rolebinding.yaml
+```
+
+Verify it's wired up:
+
+```bash
+kubectl get serviceaccount plant-operator
+kubectl get clusterrole plant-operator-role
+kubectl get clusterrolebinding plant-operator-rolebinding
+```
+
+Test that the ServiceAccount has the permissions it expects:
+
+```bash
+kubectl auth can-i watch plants \
+  --as=system:serviceaccount:default:plant-operator
+# yes
+
+kubectl auth can-i delete plants \
+  --as=system:serviceaccount:default:plant-operator
+# no
+```
+
+`kubectl auth can-i` is the fastest way to verify that RBAC is doing what you expect.
+
+---
+
+### When this matters
+
+Running `kopf run main.py` locally uses your kubeconfig credentials — whatever `kubectl config current-context` points to. Your user probably has admin access. RBAC doesn't matter yet.
+
+RBAC kicks in when the operator runs as a Pod inside the cluster. The Pod runs as the `plant-operator` ServiceAccount. If the ServiceAccount doesn't have the right permissions, the operator fails with 403s. That's step 7.
+
+For now: the files exist, the objects are applied, and the permissions are verified. When deployment comes, this is already done.
+
+---
+
+### Takeaways
+
+- Every process in the cluster needs a ServiceAccount, a Role, and a binding. All three are required — missing any one of them and nothing works.
+- ClusterRole doesn't mean "admin". It means "cluster-scoped resource". You can write a ClusterRole with minimal permissions.
+- `plants` and `plants/status` are separate in RBAC because the CRD declared the status subresource. That split is what lets you give the operator write access to status without giving it write access to spec.
+- `kubectl auth can-i` with `--as` is the right way to test RBAC. Don't guess — verify.
+- RBAC is least-privilege by default. If you don't explicitly grant a verb on a resource, it's denied.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
@@ -545,7 +732,7 @@ Everything in `agent.py` still applies — the thresholds, the condition labels,
 | 2 | Local K8s cluster setup with Rancher Desktop | done |
 | 3 | Define the `Plant` CRD with schema validation | done |
 | 4 | Build the operator with `kopf` (reconcile loop) | done |
-| 5 | RBAC — ServiceAccount, Role, RoleBinding | todo |
+| 5 | RBAC — ServiceAccount, Role, RoleBinding | done |
 | 6 | Web UI dashboard | todo |
 | 7 | Deploy + test everything end to end | todo |
 
