@@ -563,9 +563,77 @@ RBAC (Role-Based Access Control) is the permission system that changes that. You
 
 Without RBAC, the operator process starts, tries to watch for Plant resources, and immediately gets a 403. The cluster refuses to serve it.
 
+```
+Without RBAC:
+
+  Operator Pod starts
+        │
+        ▼
+  GET /apis/care.example.com/v1/plants
+        │
+        ▼
+  ✗ 403 Forbidden
+    "plants is forbidden: User system:serviceaccount:default:default
+     cannot list resource plants in API group care.example.com"
+        │
+        ▼
+  operator crashes on startup
+
+
+With RBAC:
+
+  Operator Pod starts
+        │
+        ▼
+  GET /apis/care.example.com/v1/plants
+        │
+        ▼
+  API Server: does plant-operator have "list" on "plants"?
+        │
+        ▼
+  ClusterRoleBinding → ClusterRole → rule found → ✓ allowed
+        │
+        ▼
+  operator starts watching for Plant events
+```
+
 ---
 
 ### The three objects
+
+How they connect:
+
+```
+┌──────────────────────┐          ┌────────────────────────────┐
+│    ServiceAccount    │          │        ClusterRole          │
+│                      │          │                             │
+│   name: plant-       │          │   name: plant-operator-role │
+│         operator     │          │                             │
+│   namespace: default │          │   rules:                    │
+│                      │          │   · plants      → get,list  │
+│   (identity the      │          │                    watch    │
+│    Pod runs as)      │          │   · plants/status → patch   │
+└──────────┬───────────┘          │   · CRDs        → get,list │
+           │                      │   · events      → create   │
+           │                      │   · leases      → get,create│
+           │                      └──────────────┬─────────────┘
+           │                                     │
+           └──────────────┬──────────────────────┘
+                          │
+             ┌────────────▼────────────┐
+             │    ClusterRoleBinding    │
+             │                         │
+             │  subject:               │
+             │    plant-operator SA    │
+             │  roleRef:               │
+             │    plant-operator-role  │
+             │                         │
+             │  (the wire between      │
+             │   identity + perms)     │
+             └─────────────────────────┘
+```
+
+All three must exist. Missing any one: the binding has nothing to grant, the role has no subject, or the identity has no permissions.
 
 **ServiceAccount** — the identity
 
@@ -660,10 +728,24 @@ leases                      get, create, update      kopf leader election (one a
 A `Role` only grants permissions within one namespace. A `ClusterRole` grants permissions cluster-wide.
 
 ```
-Namespace "default"          Cluster level
-─────────────────────        ──────────────────────────
-plants                       customresourcedefinitions
-events                       leases
+┌────────────────────────────────────────────────────────────┐
+│                      Kubernetes Cluster                     │
+│                                                             │
+│   cluster-scoped (no namespace):                            │
+│   ┌─────────────────────────────────────────────────────┐  │
+│   │  customresourcedefinitions   ← kopf reads on startup │  │
+│   │  leases                      ← kopf leader election  │  │
+│   │  ClusterRole                                         │  │
+│   │  ClusterRoleBinding                                  │  │
+│   └─────────────────────────────────────────────────────┘  │
+│                                                             │
+│   namespace "default":                                      │
+│   ┌─────────────────────────────────────────────────────┐  │
+│   │  plants         ← Plant resources, stored in etcd   │  │
+│   │  events         ← kopf posts these after reconcile  │  │
+│   │  ServiceAccount: plant-operator                     │  │
+│   └─────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────┘
 ```
 
 Plants live in a namespace. CRDs and Leases don't. That's why we use ClusterRole — not because we want broad access, but because some of the resources we need are cluster-scoped.
