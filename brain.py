@@ -1,6 +1,6 @@
 # brain.py
 import time
-from storage import load, save, today
+from k8s_storage import load, save, today
 from agent import decide, next_action
 
 class PlantAgent:

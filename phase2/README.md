@@ -1194,6 +1194,19 @@ Once the CRD is gone, the dashboard will show "Could not reach the Kubernetes cl
 
 ## Step 8: Connect Telegram to the Cluster
 
+### What we built
+
+`k8s_storage.py` — a drop-in replacement for `storage.py` that reads and writes Plant resources in Kubernetes instead of `plants.json`. `bot.py` and `brain.py` each needed one line changed.
+
+```
+bot.py   — from k8s_storage import load, save, today
+brain.py — from k8s_storage import load, save, today
+```
+
+`plants.json` is retired. etcd is the single source of truth.
+
+---
+
 ### The problem
 
 After phase 2, there are two separate data stores:
@@ -1292,7 +1305,7 @@ Everything reads and writes the same data. `plants.json` is retired.
 | 5 | RBAC — ServiceAccount, Role, RoleBinding | done |
 | 6 | Web UI dashboard | done |
 | 7 | Deploy + test everything end to end | done |
-| 8 | Connect Telegram bot to etcd — single source of truth | todo |
+| 8 | Connect Telegram bot to etcd — single source of truth | done |
 
 ## Planned file structure
 

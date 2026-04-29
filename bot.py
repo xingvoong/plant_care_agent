@@ -4,7 +4,7 @@ import os
 import re
 import time
 import requests
-from storage import load, save, today
+from k8s_storage import load, save, today
 from agent import decide
 from rules import CARE_RULES
 from llm import ask
