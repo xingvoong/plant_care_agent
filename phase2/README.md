@@ -1278,6 +1278,37 @@ plants.json plant dict          Plant CRD spec
 
 ---
 
+### Running the bot
+
+The cluster must be running with the CRD applied before starting the bot — `k8s_storage.py` talks to the Kubernetes API on every message.
+
+```bash
+# 1. Make sure the cluster is up
+kubectl config use-context rancher-desktop
+kubectl apply -f phase2/crds/plant.yaml
+kubectl apply -f phase2/rbac/
+kubectl apply -f phase2/deploy/operator.yaml
+
+# 2. Run the bot
+export BOT_TOKEN=your_token_here
+source venv/bin/activate
+python bot.py
+```
+
+The bot connects to the cluster via your local kubeconfig (`~/.kube/config`). No in-cluster deployment needed — it runs on your Mac and talks to the cluster the same way `kubectl` does.
+
+To verify it's reading from the cluster:
+
+```bash
+# Add a plant via Telegram: "I got a new pothos called Pearl"
+# Then check etcd:
+kubectl get plants
+```
+
+The new plant should appear immediately.
+
+---
+
 ### After step 8
 
 ```
