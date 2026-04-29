@@ -1156,12 +1156,28 @@ Use `localhost:5000` while developing. Redeploy to the cluster (`localhost:30080
 
 ### Teardown
 
+Delete in reverse order — workloads first, then RBAC, then the CRD last.
+
 ```bash
 kubectl delete -f phase2/deploy/
 kubectl delete -f phase2/rbac/
-kubectl delete -f phase2/crds/plant.yaml
 kubectl delete secret plant-secrets
 ```
+
+Then delete the plants before the CRD. kopf adds finalizers to Plant resources — if the operator Pod is already gone, nothing processes those finalizers and the delete hangs. Strip them first:
+
+```bash
+kubectl delete plants --all
+```
+
+If that hangs (finalizers blocking), force it:
+
+```bash
+kubectl patch crd plants.care.example.com -p '{"metadata":{"finalizers":[]}}' --type=merge
+kubectl delete crd plants.care.example.com
+```
+
+Once the CRD is gone, the dashboard will show "Could not reach the Kubernetes cluster" — that's expected. The cluster is clean.
 
 ---
 
