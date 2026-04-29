@@ -15,7 +15,10 @@ Talk to the bot in plain English:
 - `"how are my plants?"` — get a status summary
 - `"I watered my Maranta"` — logs the watering
 - `"I got a new pothos called Pearl"` — adds the plant
+- `"add avocado, name bonsai"` — adds any plant type, not just known ones
 - `"why are my pothos leaves yellowing?"` — AI-powered advice
+
+Any plant type works. Known types (prayer plant, pothos, golden snake) use built-in care rules. Unknown types fetch care rules from MiniMax automatically.
 
 ## Demo
 

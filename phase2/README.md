@@ -1237,26 +1237,36 @@ One source of truth. Both Telegram and the dashboard read and write the same Pla
 
 ---
 
-### What needs to be written
+### What changed
 
-**`k8s_storage.py`** — a drop-in replacement for `storage.py` that talks to the Kubernetes API:
+**`k8s_storage.py`** — new file, drop-in replacement for `storage.py`:
 
 ```
-load(user_id)           → list Plants where spec.ownerID == user_id
-save(user_id, plants)   → create/patch Plant resources
-today()                 → date.today().isoformat()  (unchanged)
+load()        → lists all Plant resources, groups by ownerID
+save(data)    → patches existing Plants or creates new ones
+today()       → unchanged
 ```
 
-**`bot.py` changes:**
-- Replace `import storage` with `import k8s_storage as storage`
-- `/addplant` → `create_namespaced_custom_object`
-- `/water` → patch `spec.lastWatered` on the matching Plant
-- `/status` → list Plants for the user, read `status.condition`
-- Free text LLM → pull plant list from K8s for context
+**`bot.py`** — one import change + fixed `detect_add`:
+- `from k8s_storage import load, save, today`
+- `detect_add()` now catches any plant type, not just known ones
+- Handles natural language patterns: "add avocado, name bonsai" / "got a new monstera called Pearl"
 
-**`brain.py` changes:**
-- `perceive()` reads from K8s instead of `plants.json`
-- `act()` patches K8s status instead of writing to file
+**`brain.py`** — one import change:
+- `from k8s_storage import load, save, today`
+
+**`llm.py`** — added `get_care_rules(plant_type)`:
+- Asks MiniMax for care rules in JSON format for any unknown plant type
+- Returns a dict matching the `CARE_RULES` shape
+
+**`rules.py`** — added `lookup(plant_type)`:
+- Checks `CARE_RULES` first
+- Falls back to `get_care_rules()` for unknown types
+- Caches the result in `CARE_RULES` for the session
+
+**`agent.py`** — uses `rules.lookup()` instead of `CARE_RULES.get()`
+
+**`phase2/crds/plant.yaml`** — removed `plantType` enum restriction so any plant type is accepted by the cluster
 
 ---
 
@@ -1290,7 +1300,7 @@ kubectl apply -f phase2/rbac/
 kubectl apply -f phase2/deploy/operator.yaml
 
 # 2. Run the bot
-export BOT_TOKEN=your_token_here
+source .env
 source venv/bin/activate
 python bot.py
 ```
@@ -1300,12 +1310,15 @@ The bot connects to the cluster via your local kubeconfig (`~/.kube/config`). No
 To verify it's reading from the cluster:
 
 ```bash
-# Add a plant via Telegram: "I got a new pothos called Pearl"
+# Add a plant via Telegram:
+#   "add avocado, name bonsai"
+#   "I got a new monstera called Pearl"
+#   "got a pothos called Ivy"
 # Then check etcd:
 kubectl get plants
 ```
 
-The new plant should appear immediately.
+The new plant should appear immediately. Unknown plant types (anything outside the three built-in ones) trigger a MiniMax lookup for care rules — the result is cached for the session.
 
 ---
 
