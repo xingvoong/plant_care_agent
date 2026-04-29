@@ -37,95 +37,29 @@ In short: the **bot talks**, the **agent thinks**.
 ```
 ┌────────────────────────────┐
 │        Telegram API        │
-│  (getUpdates / sendMessage)│
 └─────────────┬──────────────┘
               │ HTTP (polling)
 ┌─────────────▼──────────────┐
 │           bot.py           │
-│  - Polls Telegram          │
-│  - Detects intent          │
-│  - Executes actions        │
-└─────────────┬──────────────┘
-         ┌────┴────┐
-┌────────▼───┐ ┌───▼──────┐
-│  agent.py  │ │  llm.py  │
-│  - Status  │ │ MiniMax  │
-│  - Rules   │ │ OpenRouter│
-└────────────┘ └──────────┘
-              │
-┌─────────────▼──────────────┐
-│        storage.py          │
-│  - plants.json persistence │
-└────────────────────────────┘
+│  intent detection          │
+└──────┬──────────────┬───────┘
+       │              │
+┌──────▼─────┐  ┌─────▼──────┐
+│  agent.py  │  │   llm.py   │
+│  rules.py  │  │  MiniMax   │
+└──────┬─────┘  └────────────┘
+       │
+┌──────▼──────────────────────┐
+│       k8s_storage.py        │
+│  Kubernetes API → etcd      │
+└─────────────────────────────┘
 ```
 
 ## Phase 2: Kubernetes Operator
 
-The next phase moves the plant care agent into Kubernetes — turning plants into native cluster resources, managed by an operator.
+Plants are stored as Kubernetes custom resources in etcd. The operator watches for changes, reconciles conditions, and sends Telegram reminders. Both the Telegram bot and the web dashboard read and write the same data.
 
-### Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                  Kubernetes Cluster                  │
-│                                                      │
-│  ┌─────────────┐     watches      ┌───────────────┐ │
-│  │   Plant CRD  │◄────────────────│   Operator    │ │
-│  │  (etcd)      │                 │  (your code)  │ │
-│  └─────────────┘                  └───────┬───────┘ │
-│         ▲                                 │         │
-│         │ kubectl apply                   │ reconcile│
-│         │                                 ▼         │
-│  ┌──────┴──────┐                  ┌───────────────┐ │
-│  │  plant.yaml  │                 │  Telegram Bot  │ │
-│  │  (manifest)  │                 │  (reminder)   │ │
-│  └─────────────┘                  └───────────────┘ │
-│                                                      │
-│  ┌──────────────────────────────────────────────┐   │
-│  │              Web UI (dashboard)               │   │
-│  │   shows all Plant resources + their status   │   │
-│  └──────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
-```
-
-### How it works
-
-1. Add a plant through the web dashboard or Telegram — both write to the same Kubernetes API
-2. Plants are stored as `Plant` custom resources in etcd — one source of truth
-3. The operator watches for `Plant` resources — when one is created or updated, it runs the reconcile loop
-4. The reconcile loop checks if a plant is overdue for watering and acts (updates status, sends Telegram reminder)
-5. The web dashboard reads from the K8s API and shows all plants with their current condition
-
-### Build plan
-
-| Step | What we build |
-|------|--------------|
-| 1 | Architecture + big picture |
-| 2 | Local K8s cluster setup (Rancher Desktop) |
-| 3 | Define the CRDs (Plant as a K8s resource) |
-| 4 | Build the operator (reconcile loop with kopf) |
-| 5 | RBAC + cluster management configs |
-| 6 | Web UI dashboard |
-| 7 | Deploy + test everything end to end |
-| 8 | Connect Telegram bot to etcd — single source of truth |
-
-### Engineering areas
-
-This project covers three areas:
-
-**Platform / Infrastructure Engineering**
-- Kubernetes CRDs, operators, RBAC, etcd as a state store
-- The operator pattern is how production platforms (Datadog, Elastic, Postgres) manage stateful workloads on K8s
-
-**Backend Engineering**
-- Telegram bot with a perceive-think-act agent loop
-- Flask API serving the web dashboard
-- LLM integration via MiniMax for free-text plant advice
-
-**ML Engineering (serving patterns)**
-- Event-driven inference: the reconcile loop fires on data change, not on a cron
-- The agent loop mirrors how deployed models observe state, run inference, and act
-- No training pipeline — this is the serving and infrastructure side only
+See [phase2/README.md](phase2/README.md) for the full build log.
 
 ---
 
