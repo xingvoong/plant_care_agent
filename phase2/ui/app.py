@@ -146,6 +146,30 @@ def add_plant():
     return redirect(url_for("index"))
 
 
+@app.route("/water/<resource_name>", methods=["POST"])
+def water_plant(resource_name):
+    from datetime import date
+    today = date.today().isoformat()
+
+    load_k8s_config()
+    api = client.CustomObjectsApi()
+
+    try:
+        api.patch_namespaced_custom_object(
+            group=GROUP,
+            version=VERSION,
+            namespace=NAMESPACE,
+            plural=PLURAL,
+            name=resource_name,
+            body={"spec": {"lastWatered": today}},
+        )
+        flash(f"Watered! Last watered set to {today}.", "success")
+    except ApiException as e:
+        flash(f"Failed to water plant: {e.reason}", "error")
+
+    return redirect(url_for("index"))
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)

@@ -1030,27 +1030,33 @@ The same applies to the UI. Same ServiceAccount, same token, same API access pat
 
 ### Build the images
 
-Rancher Desktop uses containerd (not Docker daemon). Build images directly into the `k8s.io` containerd namespace so k3s can pull them without a registry:
+Rancher Desktop on macOS uses `cri-dockerd` — k3s delegates image management to Docker. Build with Docker and the images are immediately available to k3s.
+
+First confirm the Docker context is set to Rancher Desktop:
 
 ```bash
-# operator
-nerdctl --namespace k8s.io build -t plant-operator:latest phase2/operator/
+docker context use rancher-desktop
+```
 
-# UI
-nerdctl --namespace k8s.io build -t plant-ui:latest phase2/ui/
+Then build:
+
+```bash
+docker build -t plant-operator:latest phase2/operator/
+docker build -t plant-ui:latest phase2/ui/
 ```
 
 `imagePullPolicy: Never` in the manifests tells k3s to use the local image — no registry push needed.
+
+> **Note:** `nerdctl --namespace k8s.io build` is the documented approach but requires `buildkitd` running inside the Lima VM, which Rancher Desktop doesn't start by default. The `docker build` + cri-dockerd path works out of the box.
 
 ---
 
 ### Create the bot token secret
 
-The operator reads `BOT_TOKEN` from a Kubernetes Secret:
+The operator reads `BOT_TOKEN` from a Kubernetes Secret. Pass it as a single command (no line break around the token):
 
 ```bash
-kubectl create secret generic plant-secrets \
-  --from-literal=BOT_TOKEN=<your_token>
+kubectl create secret generic plant-secrets --from-literal=BOT_TOKEN=your_token_here
 ```
 
 Do this once. The Deployment references it via `secretKeyRef` — the token never appears in the manifest file.
@@ -1101,27 +1107,50 @@ open http://localhost:30080
 
 1. Open `http://localhost:30080`
 2. Add a plant through the form — set `lastWatered` to a date 2+ weeks ago
-3. Watch the operator logs: it fires a reconcile within seconds
-4. Refresh the dashboard — condition shows `overdue`
-5. If `BOT_TOKEN` is set, the Telegram reminder fires
+3. Click **Water** on any overdue plant to reset `lastWatered` to today
+4. Watch the operator logs: it fires a reconcile within seconds of any change
+5. Refresh the dashboard — condition updates immediately
+6. If `BOT_TOKEN` is set, the Telegram reminder fires for overdue plants
 
 ```
-Browser form submit
+Browser form submit (add) or Water button click
       │
       ▼
-plant-ui Pod → create Plant in etcd
+plant-ui Pod → create or patch Plant in etcd
       │
       ▼
-plant-operator Pod sees new Plant → reconcile
+plant-operator Pod sees change → reconcile
       │
       ▼
-status.condition = "overdue" written to etcd
+status.condition written to etcd
       │
-      ├─► Telegram reminder sent to ownerID
+      ├─► Telegram reminder sent (if overdue/soon)
       │
       ▼
-Browser refresh → dashboard shows overdue with message
+Browser refresh → dashboard shows updated condition
 ```
+
+---
+
+### Development workflow
+
+The in-cluster UI requires a full image rebuild on every code change:
+
+```bash
+docker build -t plant-ui:latest phase2/ui/
+kubectl rollout restart deployment/plant-ui
+```
+
+For faster iteration, run the UI locally — it talks to the same cluster:
+
+```bash
+kubectl delete deployment plant-ui   # remove the in-cluster pod
+cd phase2/ui
+python app.py                        # auto-reloads on file changes
+# open http://localhost:5000
+```
+
+Use `localhost:5000` while developing. Redeploy to the cluster (`localhost:30080`) when done.
 
 ---
 
@@ -1142,7 +1171,8 @@ kubectl delete secret plant-secrets
 - Secrets go in `kubectl create secret`, not in YAML files. Never commit tokens to the repo.
 - Apply order matters: CRD before the operator (it reads the schema on startup), RBAC before the Pods (they need the ServiceAccount to exist).
 - The operator and UI use the same ServiceAccount. In production you'd separate them — the UI only needs `get`, `list`, `create` on plants; the operator needs `patch` and `update` on status too.
-- `nerdctl --namespace k8s.io build` is the Rancher Desktop equivalent of `docker build`. The `k8s.io` namespace is where k3s looks for images.
+- Rancher Desktop on macOS uses `cri-dockerd` — k3s uses Docker as its container runtime. `docker build` is enough. `nerdctl` requires `buildkitd` which isn't running by default.
+- For development, run the UI locally (`python app.py`) and only deploy to the cluster to verify the final image. Rebuilding the image on every change is slow.
 
 ---
 

@@ -209,6 +209,19 @@
 
     .btn-add:hover { background: #3a5e3a; }
 
+    .btn-water {
+      padding: 0.3rem 0.75rem;
+      background: #e6f5eb;
+      color: #276035;
+      border: 1px solid #b2dfc0;
+      border-radius: 5px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .btn-water:hover { background: #d0edda; }
+
     /* Flash messages */
     .flash {
       padding: 0.75rem 1rem;
@@ -308,6 +321,7 @@
         <th>Status</th>
         <th>Last Reminded</th>
         <th>Owner ID</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -325,6 +339,11 @@
         <td class="message">{{ plant.message }}</td>
         <td class="muted">{{ plant.last_reminded if plant.last_reminded else "—" }}</td>
         <td class="muted">{{ plant.owner_id }}</td>
+        <td>
+          <form method="POST" action="/water/{{ plant.resource_name }}">
+            <button type="submit" class="btn-water">Water</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
