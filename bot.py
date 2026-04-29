@@ -72,14 +72,18 @@ def detect_add(text):
 
     # Try to extract an unknown plant type
     # Matches: "got a monstera called Pearl", "new fiddle leaf fig", "I have a snake plant"
-    match = re.search(
-        r'(?:new|got an?|have an?|bought an?|added an?)\s+([a-z][a-z ]+?)(?:\s+(?:called|named)\s+([A-Za-z][A-Za-z ]+))?(?:\s|$)',
-        text
-    )
-    if match:
-        plant_type = match.group(1).strip()
-        name = match.group(2).strip().title() if match.group(2) else plant_type.title()
-        return {"type": plant_type, "name": name}
+    anchor = re.search(r'\b(?:new|got an?|have an?|bought an?|added an?)\s+', text)
+    if anchor:
+        rest = text[anchor.end():]
+        name_match = re.search(r'\b(?:called|named)\s+([A-Za-z][A-Za-z ]*)', rest)
+        if name_match:
+            plant_type = rest[:name_match.start()].strip()
+            name = name_match.group(1).strip().title()
+        else:
+            plant_type = rest.strip()
+            name = plant_type.title()
+        if plant_type:
+            return {"type": plant_type, "name": name}
 
     return None
 

@@ -30,11 +30,7 @@ spec:
                   description: Display name of the plant (e.g. "Maranta")
                 plantType:
                   type: string
-                  enum:
-                    - prayer plant
-                    - pothos
-                    - golden snake
-                  description: Plant species — must match a key in CARE_RULES
+                  description: Plant species — known types use static CARE_RULES, unknown types fetch rules from LLM
                 lastWatered:
                   type: string
                   format: date
