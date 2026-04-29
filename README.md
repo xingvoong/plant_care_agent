@@ -87,8 +87,8 @@ The next phase moves the plant care agent into Kubernetes — turning plants int
 
 ### How it works
 
-1. Add a plant through the web dashboard — no YAML or `kubectl` needed
-2. The dashboard calls the Kubernetes API directly, storing the plant as a `Plant` custom resource in etcd
+1. Add a plant through the web dashboard or Telegram — both write to the same Kubernetes API
+2. Plants are stored as `Plant` custom resources in etcd — one source of truth
 3. The operator watches for `Plant` resources — when one is created or updated, it runs the reconcile loop
 4. The reconcile loop checks if a plant is overdue for watering and acts (updates status, sends Telegram reminder)
 5. The web dashboard reads from the K8s API and shows all plants with their current condition
@@ -98,12 +98,13 @@ The next phase moves the plant care agent into Kubernetes — turning plants int
 | Step | What we build |
 |------|--------------|
 | 1 | Architecture + big picture |
-| 2 | Local K8s cluster setup (kind) |
+| 2 | Local K8s cluster setup (Rancher Desktop) |
 | 3 | Define the CRDs (Plant as a K8s resource) |
 | 4 | Build the operator (reconcile loop with kopf) |
 | 5 | RBAC + cluster management configs |
 | 6 | Web UI dashboard |
 | 7 | Deploy + test everything end to end |
+| 8 | Connect Telegram bot to etcd — single source of truth |
 
 ### Engineering areas
 

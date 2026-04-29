@@ -1192,6 +1192,95 @@ Once the CRD is gone, the dashboard will show "Could not reach the Kubernetes cl
 
 ---
 
+## Step 8: Connect Telegram to the Cluster
+
+### The problem
+
+After phase 2, there are two separate data stores:
+
+```
+Telegram bot  →  plants.json  (phase 1)
+Dashboard     →  etcd         (phase 2)
+Operator      →  etcd         (phase 2)
+```
+
+If you water a plant via Telegram, the dashboard doesn't know. If you add a plant via the dashboard, the Telegram bot doesn't know. Two systems, two sources of truth.
+
+---
+
+### What changes
+
+Replace `storage.py` in `bot.py` with Kubernetes API calls. The Telegram commands stay identical from the user's perspective — only the data layer underneath changes.
+
+```
+Before:
+  bot.py → storage.py → plants.json
+
+After:
+  bot.py → k8s_storage.py → Kubernetes API → etcd
+```
+
+One source of truth. Both Telegram and the dashboard read and write the same Plant resources.
+
+---
+
+### What needs to be written
+
+**`k8s_storage.py`** — a drop-in replacement for `storage.py` that talks to the Kubernetes API:
+
+```
+load(user_id)           → list Plants where spec.ownerID == user_id
+save(user_id, plants)   → create/patch Plant resources
+today()                 → date.today().isoformat()  (unchanged)
+```
+
+**`bot.py` changes:**
+- Replace `import storage` with `import k8s_storage as storage`
+- `/addplant` → `create_namespaced_custom_object`
+- `/water` → patch `spec.lastWatered` on the matching Plant
+- `/status` → list Plants for the user, read `status.condition`
+- Free text LLM → pull plant list from K8s for context
+
+**`brain.py` changes:**
+- `perceive()` reads from K8s instead of `plants.json`
+- `act()` patches K8s status instead of writing to file
+
+---
+
+### Data model mapping
+
+The plant dict shape used by `agent.py` maps directly to the CRD spec:
+
+```
+plants.json plant dict          Plant CRD spec
+──────────────────────          ──────────────────────
+"name": "Maranta"          →    spec.plantName
+"type": "prayer plant"     →    spec.plantType
+"last_watered": "2026-04-29" →  spec.lastWatered
+<user_id key>              →    spec.ownerID
+"last_reminded": "..."     →    status.lastReminded
+```
+
+`agent.py` and `rules.py` don't change — they work on plant dicts, and `k8s_storage.py` handles the translation.
+
+---
+
+### After step 8
+
+```
+Telegram /water  ──────────────────────────────────┐
+Telegram /status ──► k8s_storage.py ──► etcd ◄─────┤
+Dashboard Water  ──────────────────────────────────┘
+                                          │
+                                    Operator watches
+                                    reconciles
+                                    updates status
+```
+
+Everything reads and writes the same data. `plants.json` is retired.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
@@ -1203,6 +1292,7 @@ Once the CRD is gone, the dashboard will show "Could not reach the Kubernetes cl
 | 5 | RBAC — ServiceAccount, Role, RoleBinding | done |
 | 6 | Web UI dashboard | done |
 | 7 | Deploy + test everything end to end | done |
+| 8 | Connect Telegram bot to etcd — single source of truth | todo |
 
 ## Planned file structure
 
