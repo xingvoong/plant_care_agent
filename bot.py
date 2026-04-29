@@ -6,7 +6,7 @@ import time
 import requests
 from k8s_storage import load, save, today
 from agent import decide
-from rules import CARE_RULES
+from rules import CARE_RULES, lookup
 from llm import ask
 
 
@@ -59,14 +59,28 @@ def detect_water(text, plants):
 
 
 def detect_add(text):
-    """Return {type, name} if user wants to add a known plant type."""
+    """Return {type, name} if user wants to add a plant (known or unknown type)."""
     if not any(w in text for w in ADD_WORDS):
         return None
+
+    # Check known types first
     for ptype in CARE_RULES:
         if ptype in text:
             match = re.search(r'(?:called|named)\s+([A-Za-z ]+)', text)
             name = match.group(1).strip().title() if match else ptype.title()
             return {"type": ptype, "name": name}
+
+    # Try to extract an unknown plant type
+    # Matches: "got a monstera called Pearl", "new fiddle leaf fig", "I have a snake plant"
+    match = re.search(
+        r'(?:new|got an?|have an?|bought an?|added an?)\s+([a-z][a-z ]+?)(?:\s+(?:called|named)\s+([A-Za-z][A-Za-z ]+))?(?:\s|$)',
+        text
+    )
+    if match:
+        plant_type = match.group(1).strip()
+        name = match.group(2).strip().title() if match.group(2) else plant_type.title()
+        return {"type": plant_type, "name": name}
+
     return None
 
 

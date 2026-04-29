@@ -26,3 +26,21 @@ CARE_RULES = {
         "overdue_threshold": 5
     }
 }
+
+
+def lookup(plant_type):
+    """
+    Get care rules for a plant type.
+    Checks CARE_RULES first. Falls back to LLM for unknown types and caches the result.
+    Returns the rules dict or None if lookup fails.
+    """
+    if plant_type in CARE_RULES:
+        return CARE_RULES[plant_type]
+
+    from llm import get_care_rules
+    print(f"[rules] '{plant_type}' not in CARE_RULES — fetching from LLM")
+    rules = get_care_rules(plant_type)
+    if rules:
+        CARE_RULES[plant_type] = rules  # cache for this session
+        print(f"[rules] cached care rules for '{plant_type}'")
+    return rules

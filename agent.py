@@ -1,9 +1,9 @@
 # agent.py
 from datetime import datetime
-from rules import CARE_RULES
+from rules import lookup
 
 def decide(plant):
-    care = CARE_RULES.get(plant["type"])
+    care = lookup(plant["type"])
     if not care:
         return "🤔 No care info available"
 
@@ -22,7 +22,7 @@ def decide(plant):
         return f"🚨 Overdue: Water today! ({care['notes']})"
 
 def care_info(plant):
-    care = CARE_RULES.get(plant["type"])
+    care = lookup(plant["type"])
     if not care:
         return "🤔 No care info available"
 
