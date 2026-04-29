@@ -87,11 +87,11 @@ The next phase moves the plant care agent into Kubernetes — turning plants int
 
 ### How it works
 
-1. You define a plant by writing a YAML manifest and applying it with `kubectl apply`
-2. Kubernetes stores it in etcd as a `Plant` custom resource
+1. Add a plant through the web dashboard — no YAML or `kubectl` needed
+2. The dashboard calls the Kubernetes API directly, storing the plant as a `Plant` custom resource in etcd
 3. The operator watches for `Plant` resources — when one is created or updated, it runs the reconcile loop
 4. The reconcile loop checks if a plant is overdue for watering and acts (updates status, sends Telegram reminder)
-5. The Web UI talks to the K8s API and displays all plants and their status in a browser
+5. The web dashboard reads from the K8s API and shows all plants with their current condition
 
 ### Build plan
 
@@ -105,13 +105,23 @@ The next phase moves the plant care agent into Kubernetes — turning plants int
 | 6 | Web UI dashboard |
 | 7 | Deploy + test everything end to end |
 
-### Why Kubernetes
+### Engineering areas
 
-- Plant state is versioned and auditable — K8s tracks every change
-- Multiple operator replicas can run safely via leader election
-- You get `kubectl get plants` for free
-- The UI can watch for real-time updates via the K8s watch API
-- Demonstrates CRDs, operators, RBAC, and cluster management in a real domain
+This project covers three areas:
+
+**Platform / Infrastructure Engineering**
+- Kubernetes CRDs, operators, RBAC, etcd as a state store
+- The operator pattern is how production platforms (Datadog, Elastic, Postgres) manage stateful workloads on K8s
+
+**Backend Engineering**
+- Telegram bot with a perceive-think-act agent loop
+- Flask API serving the web dashboard
+- LLM integration via MiniMax for free-text plant advice
+
+**ML Engineering (serving patterns)**
+- Event-driven inference: the reconcile loop fires on data change, not on a cron
+- The agent loop mirrors how deployed models observe state, run inference, and act
+- No training pipeline — this is the serving and infrastructure side only
 
 ---
 

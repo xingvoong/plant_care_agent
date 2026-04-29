@@ -806,6 +806,174 @@ For now: the files exist, the objects are applied, and the permissions are verif
 
 ---
 
+## Step 6: Web UI Dashboard
+
+### What we built
+
+A Flask dashboard that reads all `Plant` resources from the cluster via the Kubernetes API, displays them with condition-based color coding, and lets you add new plants through a form — no `kubectl` or YAML files required.
+
+```
+phase2/ui/
+  app.py              # Flask app — queries K8s custom objects API, handles form POST
+  templates/
+    index.html        # dashboard — add form + summary bar + plant table
+```
+
+---
+
+### What it shows
+
+The dashboard is a live read from etcd. Every page load hits the Kubernetes API directly — no separate database, no cache. What `kubectl get plants` shows and what the dashboard shows are the same data.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  Plant Care Dashboard                         │
+│                                                              │
+│  [ Plant Name ] [ Type ▼ ] [ Last Watered ] [ Owner ID ]    │
+│  [ Add ]                                                     │
+│                                                              │
+│  ┌──────┐  ┌─────────┐  ┌────────────┐  ┌─────────┐        │
+│  │  3   │  │    1    │  │     1      │  │    1    │        │
+│  │Total │  │ Overdue │  │ Water Soon │  │ Healthy │        │
+│  └──────┘  └─────────┘  └────────────┘  └─────────┘        │
+│                                                              │
+│  Plant     Type          Last Watered  Condition  Status    │
+│  ──────────────────────────────────────────────────────     │
+│  Maranta   prayer plant  2026-04-14    OVERDUE    Overdue   │
+│  Pothos    pothos        2026-04-20    SOON       Water...  │
+│  Snake     golden snake  2026-04-01    HEALTHY    Healthy   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Rows are sorted: overdue first, then soon, then healthy. Each row has a left-border accent in red, orange, or green.
+
+---
+
+### How it reads from the cluster
+
+The Kubernetes Python client provides `CustomObjectsApi` — the same resource group the CRD registered:
+
+```
+GET /apis/care.example.com/v1/namespaces/default/plants
+```
+
+```python
+api = client.CustomObjectsApi()
+result = api.list_namespaced_custom_object(
+    group="care.example.com",
+    version="v1",
+    namespace="default",
+    plural="plants",
+)
+```
+
+The response is the same shape as `kubectl get plants -o json`. Each item has `metadata`, `spec`, and `status` — the dashboard flattens those into a display dict.
+
+```
+K8s API response
+  items[0]:
+    metadata.name     → resource_name
+    spec.plantName    → plant_name
+    spec.plantType    → plant_type
+    spec.lastWatered  → last_watered
+    spec.ownerID      → owner_id
+    status.condition  → condition  (written by operator)
+    status.message    → message    (written by operator)
+    status.lastReminded → last_reminded
+```
+
+`status.*` fields are empty until the operator has run a reconcile. The dashboard handles that gracefully — it displays "—" for missing fields rather than crashing.
+
+---
+
+### Config loading
+
+```python
+def load_k8s_config():
+    try:
+        config.load_incluster_config()   # running as a Pod inside the cluster
+    except config.ConfigException:
+        config.load_kube_config()        # local dev — reads ~/.kube/config
+```
+
+The same code works locally and when deployed as a Pod. In-cluster config uses the ServiceAccount token mounted at `/var/run/secrets/kubernetes.io/serviceaccount`. Local config uses whichever context `kubectl config current-context` points to.
+
+---
+
+### Adding a plant through the UI
+
+Fill in the form at the top of the dashboard and click Add:
+
+- **Plant Name** — display name (e.g. "Maranta")
+- **Type** — dropdown limited to valid CRD enum values
+- **Last Watered** — date picker
+- **Owner ID** — Telegram user ID
+
+The form POSTs to `/add`. The handler calls `create_namespaced_custom_object` — the same effect as `kubectl apply`, no YAML file needed. The resource name is derived automatically from the plant name (lowercased, spaces replaced with hyphens).
+
+```
+User fills form → POST /add
+                       │
+                       ▼
+          create_namespaced_custom_object()
+                       │
+                       ▼
+          Plant stored in etcd
+                       │
+                       ▼
+          Operator sees new Plant → reconciles → writes status
+                       │
+                       ▼
+          Redirect → dashboard shows new plant with condition
+```
+
+---
+
+### Running it locally
+
+```bash
+cd phase2/ui
+pip install flask kubernetes
+python app.py
+```
+
+Open `http://localhost:5000`. The dashboard reads from whichever cluster your kubeconfig points to.
+
+To test with real data:
+
+```bash
+kubectl apply -f ../crds/plant.yaml          # CRD must exist
+kopf run ../operator/main.py --verbose       # operator writes status
+```
+
+Then add a plant through the form — no `kubectl apply` needed.
+
+To seed data manually (optional):
+
+```bash
+kubectl apply -f ../crds/sample-plant.yaml
+```
+
+---
+
+### What RBAC the UI needs
+
+The dashboard reads and writes. It needs `get`, `list`, and `create` on `plants`. When deployed as a Pod, it runs as a ServiceAccount — either reuse `plant-operator` (which already has those verbs) or create a separate ServiceAccount scoped to just what the UI needs.
+
+For now the dashboard runs locally under your kubeconfig credentials. RBAC for the deployed Pod is part of step 7.
+
+---
+
+### Takeaways
+
+- The dashboard reads and writes directly to etcd via the K8s API. There's no separate data layer. You add plants through the form — the operator picks them up and writes status back.
+- `CustomObjectsApi.list_namespaced_custom_object` reads. `create_namespaced_custom_object` writes. Same group, version, and plural as the CRD definition.
+- In-cluster config and kubeconfig are the same function call — the client picks the right one automatically.
+- The status fields are empty until the operator runs. Design the UI to handle that, not assume it.
+- The resource name is derived from the plant name — lowercased, spaces replaced with hyphens. The CRD enforces uniqueness, so duplicate names get a 409 from the API.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
@@ -815,7 +983,7 @@ For now: the files exist, the objects are applied, and the permissions are verif
 | 3 | Define the `Plant` CRD with schema validation | done |
 | 4 | Build the operator with `kopf` (reconcile loop) | done |
 | 5 | RBAC — ServiceAccount, Role, RoleBinding | done |
-| 6 | Web UI dashboard | todo |
+| 6 | Web UI dashboard | done |
 | 7 | Deploy + test everything end to end | todo |
 
 ## Planned file structure

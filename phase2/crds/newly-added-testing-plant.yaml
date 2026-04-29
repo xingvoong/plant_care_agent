@@ -1,0 +1,10 @@
+apiVersion: care.example.com/v1
+kind: Plant
+metadata:
+  name: testing-plant
+  namespace: default
+spec:
+  plantName: Testing Plant
+  plantType: pothos
+  lastWatered: "2026-04-10"
+  ownerID: "1318355077"

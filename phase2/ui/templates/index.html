@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plant Care Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7f5;
+      color: #1a1a1a;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1.5rem;
+      color: #2d4a2d;
+    }
+
+    /* Summary bar */
+    .summary {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .summary-card {
+      background: white;
+      border-radius: 8px;
+      padding: 1rem 1.5rem;
+      min-width: 120px;
+      border-left: 4px solid #ccc;
+    }
+
+    .summary-card .count {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .summary-card .label {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .summary-card.total   { border-color: #aaa; }
+    .summary-card.overdue { border-color: #e05252; }
+    .summary-card.soon    { border-color: #e09a2f; }
+    .summary-card.healthy { border-color: #4caf6a; }
+
+    .summary-card.overdue .count { color: #e05252; }
+    .summary-card.soon    .count { color: #e09a2f; }
+    .summary-card.healthy .count { color: #4caf6a; }
+
+    /* Error banner */
+    .error {
+      background: #fff0f0;
+      border: 1px solid #e05252;
+      border-radius: 6px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      color: #c0392b;
+    }
+
+    .error strong { display: block; margin-bottom: 0.25rem; }
+
+    /* Empty state */
+    .empty {
+      background: white;
+      border-radius: 8px;
+      padding: 3rem;
+      text-align: center;
+      color: #888;
+    }
+
+    /* Plant table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    thead th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #666;
+      background: #fafafa;
+      border-bottom: 1px solid #e8e8e8;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    tbody tr:last-child { border-bottom: none; }
+
+    tbody tr:hover { background: #fafffe; }
+
+    tbody td {
+      padding: 0.85rem 1rem;
+      font-size: 0.9rem;
+      vertical-align: middle;
+    }
+
+    /* Condition badge */
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.65em;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge.overdue { background: #fde8e8; color: #c0392b; }
+    .badge.soon    { background: #fef3e2; color: #b7620a; }
+    .badge.healthy { background: #e6f5eb; color: #276035; }
+    .badge.unknown { background: #f0f0f0; color: #666; }
+
+    .message { color: #555; font-size: 0.85rem; }
+
+    /* Row left-border accent */
+    tbody tr.row-overdue { border-left: 3px solid #e05252; }
+    tbody tr.row-soon    { border-left: 3px solid #e09a2f; }
+    tbody tr.row-healthy { border-left: 3px solid #4caf6a; }
+    tbody tr.row-unknown { border-left: 3px solid #ccc; }
+
+    .muted { color: #aaa; font-size: 0.8rem; }
+
+    /* Add plant form */
+    .add-form {
+      background: white;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .add-form h2 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: #2d4a2d;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .form-group label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #666;
+    }
+
+    .form-group input,
+    .form-group select {
+      padding: 0.45rem 0.65rem;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 0.9rem;
+      background: #fafafa;
+      min-width: 140px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #4caf6a;
+      background: white;
+    }
+
+    .btn-add {
+      padding: 0.45rem 1.1rem;
+      background: #2d4a2d;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: 500;
+      align-self: flex-end;
+    }
+
+    .btn-add:hover { background: #3a5e3a; }
+
+    /* Flash messages */
+    .flash {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .flash.success { background: #e6f5eb; color: #276035; border: 1px solid #b2dfc0; }
+    .flash.error   { background: #fde8e8; color: #c0392b; border: 1px solid #f5b7b1; }
+
+    /* Refresh hint */
+    .footer {
+      margin-top: 1.5rem;
+      font-size: 0.8rem;
+      color: #aaa;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Plant Care Dashboard</h1>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- Add plant form -->
+  <div class="add-form">
+    <h2>Add Plant</h2>
+    <form method="POST" action="/add">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Plant Name</label>
+          <input type="text" name="plantName" placeholder="e.g. Maranta" required>
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select name="plantType" required>
+            {% for pt in plant_types %}
+            <option value="{{ pt }}">{{ pt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Last Watered</label>
+          <input type="date" name="lastWatered" required>
+        </div>
+        <div class="form-group">
+          <label>Owner ID</label>
+          <input type="text" name="ownerID" placeholder="Telegram user ID" required>
+        </div>
+        <button type="submit" class="btn-add">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Summary bar -->
+  <div class="summary">
+    <div class="summary-card total">
+      <div class="count">{{ counts.total }}</div>
+      <div class="label">Total</div>
+    </div>
+    <div class="summary-card overdue">
+      <div class="count">{{ counts.overdue }}</div>
+      <div class="label">Overdue</div>
+    </div>
+    <div class="summary-card soon">
+      <div class="count">{{ counts.soon }}</div>
+      <div class="label">Water Soon</div>
+    </div>
+    <div class="summary-card healthy">
+      <div class="count">{{ counts.healthy }}</div>
+      <div class="label">Healthy</div>
+    </div>
+  </div>
+
+  {% if error %}
+  <div class="error">
+    <strong>Could not reach the Kubernetes cluster</strong>
+    {{ error }}
+  </div>
+  {% endif %}
+
+  {% if plants %}
+  <table>
+    <thead>
+      <tr>
+        <th>Plant</th>
+        <th>Type</th>
+        <th>Last Watered</th>
+        <th>Condition</th>
+        <th>Status</th>
+        <th>Last Reminded</th>
+        <th>Owner ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for plant in plants %}
+      <tr class="row-{{ plant.condition_class }}">
+        <td><strong>{{ plant.plant_name }}</strong></td>
+        <td>{{ plant.plant_type }}</td>
+        <td>{{ plant.last_watered }}</td>
+        <td>
+          <span class="badge {{ plant.condition_class }}">
+            {% if plant.condition == "needsWaterSoon" %}soon
+            {% else %}{{ plant.condition }}{% endif %}
+          </span>
+        </td>
+        <td class="message">{{ plant.message }}</td>
+        <td class="muted">{{ plant.last_reminded if plant.last_reminded else "—" }}</td>
+        <td class="muted">{{ plant.owner_id }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif not error %}
+  <div class="empty">
+    No plants found in namespace <strong>{{ namespace or "default" }}</strong>.<br>
+    Run <code>kubectl apply -f phase2/crds/sample-plant.yaml</code> to add one.
+  </div>
+  {% endif %}
+
+  <div class="footer">
+    Reads live from etcd via the Kubernetes API &mdash; refresh to update.
+  </div>
+
+</body>
+</html>
