@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plant-operator
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plant-operator
+  template:
+    metadata:
+      labels:
+        app: plant-operator
+    spec:
+      serviceAccountName: plant-operator
+      containers:
+        - name: operator
+          image: plant-operator:latest
+          imagePullPolicy: Never
+          env:
+            - name: BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: plant-secrets
+                  key: BOT_TOKEN
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30

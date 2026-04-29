@@ -6,7 +6,7 @@ rules:
   # Read and patch Plant resources + their status subresource
   - apiGroups: ["care.example.com"]
     resources: ["plants"]
-    verbs: ["get", "list", "watch", "patch", "update"]
+    verbs: ["get", "list", "watch", "patch", "update", "create"]
   - apiGroups: ["care.example.com"]
     resources: ["plants/status"]
     verbs: ["get", "patch", "update"]

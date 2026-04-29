@@ -974,6 +974,178 @@ For now the dashboard runs locally under your kubeconfig credentials. RBAC for t
 
 ---
 
+## Step 7: Deploy + Test End to End
+
+### What we built
+
+Docker images and Kubernetes manifests for deploying both the operator and the web UI as Pods inside the cluster.
+
+```
+phase2/
+  operator/
+    Dockerfile          # operator image — kopf + reconciler
+  ui/
+    Dockerfile          # UI image — gunicorn + Flask app
+  deploy/
+    operator.yaml       # Deployment for the operator Pod
+    ui.yaml             # Deployment + NodePort Service for the UI
+  rbac/
+    role.yaml           # updated: added "create" verb for plants (UI needs it)
+```
+
+---
+
+### How deployment works
+
+Running `kopf run main.py` locally uses your kubeconfig credentials. When deployed as a Pod, the operator runs as the `plant-operator` ServiceAccount. Kubernetes auto-mounts the ServiceAccount token — the operator uses it to talk to the API server without any extra config.
+
+The same applies to the UI. Same ServiceAccount, same token, same API access pattern.
+
+```
+┌─────────────────────────────────────────────────┐
+│               Kubernetes Cluster                 │
+│                                                  │
+│  ┌──────────────────────┐                        │
+│  │   plant-operator Pod │                        │
+│  │   image: plant-      │  watches Plant CRD     │
+│  │   operator:latest    │──────────────────────► │
+│  │   SA: plant-operator │  patches status        │
+│  └──────────────────────┘  sends Telegram        │
+│                                                  │
+│  ┌──────────────────────┐                        │
+│  │   plant-ui Pod        │                       │
+│  │   image: plant-      │  reads/creates Plants  │
+│  │   ui:latest          │──────────────────────► │
+│  │   SA: plant-operator │                        │
+│  └──────────────────────┘                        │
+│           │                                      │
+│   NodePort :30080                                │
+│           │                                      │
+└───────────┼──────────────────────────────────────┘
+            │
+     browser at localhost:30080
+```
+
+---
+
+### Build the images
+
+Rancher Desktop uses containerd (not Docker daemon). Build images directly into the `k8s.io` containerd namespace so k3s can pull them without a registry:
+
+```bash
+# operator
+nerdctl --namespace k8s.io build -t plant-operator:latest phase2/operator/
+
+# UI
+nerdctl --namespace k8s.io build -t plant-ui:latest phase2/ui/
+```
+
+`imagePullPolicy: Never` in the manifests tells k3s to use the local image — no registry push needed.
+
+---
+
+### Create the bot token secret
+
+The operator reads `BOT_TOKEN` from a Kubernetes Secret:
+
+```bash
+kubectl create secret generic plant-secrets \
+  --from-literal=BOT_TOKEN=<your_token>
+```
+
+Do this once. The Deployment references it via `secretKeyRef` — the token never appears in the manifest file.
+
+---
+
+### Deploy everything
+
+Apply in order — CRD and RBAC before the workloads that depend on them:
+
+```bash
+# 1. CRD
+kubectl apply -f phase2/crds/plant.yaml
+
+# 2. RBAC
+kubectl apply -f phase2/rbac/serviceaccount.yaml
+kubectl apply -f phase2/rbac/role.yaml
+kubectl apply -f phase2/rbac/rolebinding.yaml
+
+# 3. Operator
+kubectl apply -f phase2/deploy/operator.yaml
+
+# 4. UI
+kubectl apply -f phase2/deploy/ui.yaml
+```
+
+---
+
+### Verify
+
+```bash
+# Pods are running
+kubectl get pods
+# NAME                              READY   STATUS    RESTARTS
+# plant-operator-<hash>             1/1     Running   0
+# plant-ui-<hash>                   1/1     Running   0
+
+# Operator logs
+kubectl logs -l app=plant-operator --follow
+
+# UI is reachable
+open http://localhost:30080
+```
+
+---
+
+### Test the full flow
+
+1. Open `http://localhost:30080`
+2. Add a plant through the form — set `lastWatered` to a date 2+ weeks ago
+3. Watch the operator logs: it fires a reconcile within seconds
+4. Refresh the dashboard — condition shows `overdue`
+5. If `BOT_TOKEN` is set, the Telegram reminder fires
+
+```
+Browser form submit
+      │
+      ▼
+plant-ui Pod → create Plant in etcd
+      │
+      ▼
+plant-operator Pod sees new Plant → reconcile
+      │
+      ▼
+status.condition = "overdue" written to etcd
+      │
+      ├─► Telegram reminder sent to ownerID
+      │
+      ▼
+Browser refresh → dashboard shows overdue with message
+```
+
+---
+
+### Teardown
+
+```bash
+kubectl delete -f phase2/deploy/
+kubectl delete -f phase2/rbac/
+kubectl delete -f phase2/crds/plant.yaml
+kubectl delete secret plant-secrets
+```
+
+---
+
+### Takeaways
+
+- `imagePullPolicy: Never` is the right setting for local images. Without it, k3s tries to pull from Docker Hub and fails.
+- Secrets go in `kubectl create secret`, not in YAML files. Never commit tokens to the repo.
+- Apply order matters: CRD before the operator (it reads the schema on startup), RBAC before the Pods (they need the ServiceAccount to exist).
+- The operator and UI use the same ServiceAccount. In production you'd separate them — the UI only needs `get`, `list`, `create` on plants; the operator needs `patch` and `update` on status too.
+- `nerdctl --namespace k8s.io build` is the Rancher Desktop equivalent of `docker build`. The `k8s.io` namespace is where k3s looks for images.
+
+---
+
 ## Game plan
 
 | Step | What | Status |
@@ -984,7 +1156,7 @@ For now the dashboard runs locally under your kubeconfig credentials. RBAC for t
 | 4 | Build the operator with `kopf` (reconcile loop) | done |
 | 5 | RBAC — ServiceAccount, Role, RoleBinding | done |
 | 6 | Web UI dashboard | done |
-| 7 | Deploy + test everything end to end | todo |
+| 7 | Deploy + test everything end to end | done |
 
 ## Planned file structure
 
