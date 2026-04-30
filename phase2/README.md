@@ -404,15 +404,30 @@ kubectl delete crd plants.care.example.com
 ## Step 8: Connect Telegram to the Cluster
 
 ```
-Before:
-  Telegram → bot.py → storage.py → plants.json
-  Dashboard          → K8s API   → etcd
-  (two separate stores)
+BEFORE — two separate stores
 
-After:
-  Telegram → bot.py → k8s_storage.py → K8s API → etcd
-  Dashboard        → K8s API         → etcd
-  (one source of truth)
+  ┌──────────┐     ┌────────┐     ┌────────────┐     ┌─────────────┐
+  │ Telegram │────▶│ bot.py │────▶│ storage.py │────▶│ plants.json │
+  └──────────┘     └────────┘     └────────────┘     └─────────────┘
+
+  ┌───────────┐                   ┌─────────┐         ┌──────┐
+  │ Dashboard │──────────────────▶│ K8s API │────────▶│ etcd │
+  └───────────┘                   └─────────┘         └──────┘
+
+  Two write paths. Two stores. Dashboard and Telegram never see the same data.
+
+
+AFTER — single source of truth
+
+  ┌──────────┐     ┌────────┐     ┌────────────────┐     ┌─────────┐     ┌──────┐
+  │ Telegram │────▶│ bot.py │────▶│ k8s_storage.py │────▶│ K8s API │────▶│ etcd │
+  └──────────┘     └────────┘     └────────────────┘     └────┬────┘     └──┬───┘
+                                                               │             │
+  ┌───────────┐                                                │             │
+  │ Dashboard │────────────────────────────────────────────────┘     reads ◀─┘
+  └───────────┘
+
+  One write path. etcd is the store. Telegram and Dashboard always see the same data.
 ```
 
 `k8s_storage.py` replaces `storage.py` — same `load()` / `save()` / `today()` interface, backed by the Kubernetes API instead of `plants.json`. `bot.py` and `brain.py` each needed one import line changed.
