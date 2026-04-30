@@ -209,17 +209,13 @@ kopf run main.py --verbose
 
 **Why this matters**
 
-The alternative is a script you run manually:
+The alternative is running a script manually. You forget, it doesn't react to new plants, and when it crashes nothing recovers. That's three failure modes before you've done anything interesting.
 
-```bash
-python check_plants.py  # did I remember to run this today?
-```
+The operator runs forever inside the cluster. New plant added — handler fires. Operator crashes — Kubernetes restarts it. You don't schedule it, you don't remember to run it.
 
-That breaks in three ways: you forget to run it, it doesn't react when a new plant is added, and if it crashes nothing recovers. The operator fixes all three — it runs forever inside the cluster, fires the moment a Plant changes, and Kubernetes restarts it if it dies.
+The real shift is intent over procedure. You're not saying "run this script at 9am." You're declaring what healthy looks like. The operator enforces that state continuously.
 
-The deeper shift: you're describing intent, not procedure. Instead of "run this script at this time," you declare what a healthy plant looks like. The operator enforces that state continuously.
-
-This is exactly what Kubernetes itself does. You don't tell it "start a container, restart it if it dies." You say "I want 3 replicas." A controller watches for that, sees the gap, closes it — forever. Your operator does the same thing for plants.
+Kubernetes does the same thing. You don't say "start a container, restart it if it dies." You say `replicas: 3`. A controller sees the gap between desired and current, closes it, repeats forever. Your operator is that — just for plants.
 
 ---
 
