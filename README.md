@@ -85,6 +85,6 @@ Requires a running Kubernetes cluster with the Plant CRD applied. See [phase2/RE
 | `BOT_TOKEN` | Telegram bot token from @BotFather |
 | `OPENROUTER_API_KEY` | API key from openrouter.ai (used for MiniMax) |
 
-## Demo
+## Demo for phrase 1
 
 [![Plant Care Agent Demo](https://img.youtube.com/vi/uITz0FG0pEc/0.jpg)](https://youtu.be/uITz0FG0pEc)
