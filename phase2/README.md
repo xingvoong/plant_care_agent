@@ -66,11 +66,56 @@ phase2/
 
 **spec vs status** — `spec` is desired state (you write it). `status` is observed state (the operator writes it). They never cross.
 
+```
+You (Telegram / Dashboard)          Operator (kopf)
+──────────────────────────          ───────────────
+writes spec:                        writes status:
+  plantName                           condition
+  plantType                           lastReminded
+  lastWatered                         message
+  ownerID
+```
+
+The reconcile loop:
+
+```
+Plant created or updated in etcd
+          │
+          ▼
+  kopf fires handler
+          │
+          ▼
+  read spec → agent.decide() → compute condition
+          │
+          ▼
+  patch status → send Telegram if overdue
+          │
+          ▼
+  wait for next change
+```
+
 ---
 
 ## Step 2: Local Cluster Setup
 
 Uses **Rancher Desktop** — bundles a Lima VM, k3s (lightweight Kubernetes), and a Docker socket. Nothing to install separately.
+
+```
+┌─────────────────────────────────────────────┐
+│                 Your Mac                     │
+│                                              │
+│   kubectl / docker                           │
+│        │                                     │
+│   ┌────▼────────────────────────────────┐   │
+│   │         Lima VM                      │   │
+│   │   ┌──────────────────────────────┐   │   │
+│   │   │   k3s (lightweight K8s)      │   │   │
+│   │   │   etcd · API server          │   │   │
+│   │   │   kubelet · cri-dockerd      │   │   │
+│   │   └──────────────────────────────┘   │   │
+│   └─────────────────────────────────────┘   │
+└─────────────────────────────────────────────┘
+```
 
 ```bash
 kubectl config use-context rancher-desktop
@@ -86,6 +131,21 @@ Rancher Desktop uses `cri-dockerd` — k3s delegates image management to Docker.
 ## Step 3: Plant CRD
 
 The CRD defines the `Plant` schema. Kubernetes validates every resource against it on write.
+
+```
+  ┌─────────────────────────────────────────────────┐
+  │                  Plant Resource                  │
+  │                                                  │
+  │   spec/               │   status/                │
+  │   ─────────────────   │   ─────────────────────  │
+  │   plantName           │   condition              │
+  │   plantType           │   lastReminded           │
+  │   lastWatered         │   message                │
+  │   ownerID             │                          │
+  │                       │                          │
+  │   ← you write this    │   ← operator writes this │
+  └─────────────────────────────────────────────────┘
+```
 
 **Schema:**
 
@@ -117,6 +177,21 @@ kubectl get plants
 
 The operator watches Plant resources and reconciles on every create/update. A 12-hour timer catches plants that go overdue without a spec change.
 
+```
+┌──────────────────────────────────────────────────────┐
+│                   Operator Process                    │
+│                                                      │
+│  kopf watches K8s API → event fires → handler()     │
+│                                           │          │
+│                               ┌───────────▼────────┐ │
+│                               │  1. read spec       │ │
+│                               │  2. agent.decide()  │ │
+│                               │  3. patch status    │ │
+│                               │  4. send reminder   │ │
+│                               └────────────────────┘ │
+└──────────────────────────────────────────────────────┘
+```
+
 **Reconcile loop:**
 1. Read `spec.plantType` and `spec.lastWatered`
 2. Compute condition via `agent.decide()`
@@ -137,6 +212,32 @@ kopf run main.py --verbose
 ## Step 5: RBAC
 
 Three objects give the operator and UI the permissions they need.
+
+```
+┌──────────────────────┐          ┌────────────────────────────┐
+│    ServiceAccount    │          │        ClusterRole          │
+│   plant-operator     │          │   plant-operator-role       │
+│   namespace: default │          │                             │
+│                      │          │   plants      → get,list,   │
+│   identity the       │          │                watch,patch, │
+│   Pod runs as        │          │                update,create│
+└──────────┬───────────┘          │   plants/status → patch     │
+           │                      │   CRDs          → get,list  │
+           │                      │   events        → create    │
+           │                      │   leases        → get,create│
+           │                      └──────────────┬─────────────┘
+           │                                     │
+           └──────────────┬──────────────────────┘
+                          │
+             ┌────────────▼────────────┐
+             │    ClusterRoleBinding    │
+             │  plant-operator-        │
+             │  rolebinding            │
+             │                         │
+             │  connects identity      │
+             │  to permissions         │
+             └─────────────────────────┘
+```
 
 | Object | Name | Purpose |
 |--------|------|---------|
@@ -182,6 +283,26 @@ kubectl auth can-i delete plants --as=system:serviceaccount:default:plant-operat
 
 Flask app that reads and writes Plant resources via the Kubernetes API. No separate database — every page load hits etcd directly.
 
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  Plant Care Dashboard                         │
+│                                                              │
+│  [ Plant Name ] [ Type ▼ ] [ Last Watered ] [ Owner ID ]    │
+│  [ Add ]                                                     │
+│                                                              │
+│  ┌──────┐  ┌─────────┐  ┌────────────┐  ┌─────────┐        │
+│  │  3   │  │    1    │  │     1      │  │    1    │        │
+│  │Total │  │ Overdue │  │ Water Soon │  │ Healthy │        │
+│  └──────┘  └─────────┘  └────────────┘  └─────────┘        │
+│                                                              │
+│  Plant     Type          Last Watered  Condition    Action  │
+│  ──────────────────────────────────────────────────────     │
+│  Maranta   prayer plant  2026-04-14    OVERDUE    [Water]   │
+│  Pothos    pothos        2026-04-20    SOON       [Water]   │
+│  Snake     golden snake  2026-04-29    HEALTHY    [Water]   │
+└──────────────────────────────────────────────────────────────┘
+```
+
 **Features:**
 - Add plant form (name, type, last watered, owner ID)
 - Water button per row — patches `spec.lastWatered` to today
@@ -202,6 +323,25 @@ python app.py
 ---
 
 ## Step 7: Deploy
+
+```
+┌─────────────────────────────────────────────────┐
+│               Kubernetes Cluster                 │
+│                                                  │
+│  ┌──────────────────────┐                        │
+│  │   plant-operator Pod │  watches Plant CRD     │
+│  │   SA: plant-operator │  patches status        │
+│  └──────────────────────┘  sends Telegram        │
+│                                                  │
+│  ┌──────────────────────┐                        │
+│  │   plant-ui Pod        │  reads/creates Plants  │
+│  │   SA: plant-operator │                        │
+│  └──────────┬───────────┘                        │
+│             │ NodePort :30080                    │
+└─────────────┼──────────────────────────────────-─┘
+              │
+       localhost:30080
+```
 
 ### Build images
 
@@ -262,6 +402,18 @@ kubectl delete crd plants.care.example.com
 ---
 
 ## Step 8: Connect Telegram to the Cluster
+
+```
+Before:
+  Telegram → bot.py → storage.py → plants.json
+  Dashboard          → K8s API   → etcd
+  (two separate stores)
+
+After:
+  Telegram → bot.py → k8s_storage.py → K8s API → etcd
+  Dashboard        → K8s API         → etcd
+  (one source of truth)
+```
 
 `k8s_storage.py` replaces `storage.py` — same `load()` / `save()` / `today()` interface, backed by the Kubernetes API instead of `plants.json`. `bot.py` and `brain.py` each needed one import line changed.
 
