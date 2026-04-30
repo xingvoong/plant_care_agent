@@ -207,6 +207,20 @@ kubectl apply -f ../crds/plant.yaml
 kopf run main.py --verbose
 ```
 
+**Why this matters**
+
+The alternative is a script you run manually:
+
+```bash
+python check_plants.py  # did I remember to run this today?
+```
+
+That breaks in three ways: you forget to run it, it doesn't react when a new plant is added, and if it crashes nothing recovers. The operator fixes all three — it runs forever inside the cluster, fires the moment a Plant changes, and Kubernetes restarts it if it dies.
+
+The deeper shift: you're describing intent, not procedure. Instead of "run this script at this time," you declare what a healthy plant looks like. The operator enforces that state continuously.
+
+This is exactly what Kubernetes itself does. You don't tell it "start a container, restart it if it dies." You say "I want 3 replicas." A controller watches for that, sees the gap, closes it — forever. Your operator does the same thing for plants.
+
 ---
 
 ## Step 5: RBAC
